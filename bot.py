@@ -21,6 +21,7 @@ async def set_commands(bot: Bot):
         BotCommand(command="trip",   description="✈️ Додати поїздку"),
         BotCommand(command="saved",  description="❤️ Збережені хости"),
         BotCommand(command="rating", description="📊 Мій рейтинг"),
+        BotCommand(command="browse", description="🔍 Переглянути мандрівників"),
         BotCommand(command="help",   description="❓ Допомога"),
     ])
 
@@ -28,7 +29,7 @@ async def set_commands(bot: Bot):
 async def main():
     token = os.getenv("BOT_TOKEN", "")
     if not token:
-        logger.error("❌ BOT_TOKEN не вказано!")
+        logger.error("❌ BOT_TOKEN не вказано! Додайте змінну у Railway → Variables")
         sys.exit(1)
 
     db_path = os.getenv("DB_PATH", "/data/home_exchange.db")
@@ -39,6 +40,7 @@ async def main():
     import trip as trip_handler
     import matches as matches_handler
     import reviews as reviews_handler
+    import browse as browse_handler
 
     logger.info("🚀 Запуск Travel Swap Club Bot...")
     await db.init_db()
@@ -50,6 +52,7 @@ async def main():
     dp.include_router(trip_handler.router)
     dp.include_router(matches_handler.router)
     dp.include_router(reviews_handler.router)
+    dp.include_router(browse_handler.router)
 
     await set_commands(bot)
     me = await bot.get_me()
