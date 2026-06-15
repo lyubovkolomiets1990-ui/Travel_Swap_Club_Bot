@@ -12,6 +12,9 @@ async def init_db():
                 home_city TEXT,
                 home_country TEXT,
                 home_description TEXT,
+                home_photos TEXT DEFAULT '',
+                has_pets INTEGER DEFAULT 0,
+                pets_info TEXT DEFAULT '',
                 registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -73,6 +76,16 @@ async def init_db():
                 UNIQUE(from_user_id, to_user_id)
             )
         """)
+        # Додаємо нові поля якщо їх ще немає (для існуючих БД)
+        for col, default in [
+            ("home_photos", "''"),
+            ("has_pets", "0"),
+            ("pets_info", "''"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT {default}")
+            except Exception:
+                pass
         await db.commit()
     print("✅ База даних ініціалізована")
 
@@ -95,12 +108,15 @@ async def create_user(telegram_id: int, name: str):
         await db.commit()
 
 
-async def update_user_home(telegram_id: int, city: str, country: str, description: str):
+async def update_user_home(telegram_id: int, city: str, country: str,
+                           description: str, photos: str = "",
+                           has_pets: int = 0, pets_info: str = ""):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            """UPDATE users SET home_city=?, home_country=?, home_description=?
+            """UPDATE users SET home_city=?, home_country=?, home_description=?,
+               home_photos=?, has_pets=?, pets_info=?
                WHERE telegram_id=?""",
-            (city, country, description, telegram_id),
+            (city, country, description, photos, has_pets, pets_info, telegram_id),
         )
         await db.commit()
 
