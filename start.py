@@ -244,15 +244,15 @@ async def cmd_rating(message: Message):
 async def cmd_help(message: Message):
     await message.answer(
         "📖 *Як користуватись ботом:*\n\n"
-        "1️⃣ /start — налаштувати профіль і описати житло\n"
-        "2️⃣ /trip — додати поїздку (куди, коли, хто ви)\n"
-        "3️⃣ Бот знайде людей що їдуть у ваш бік\n"
-        "4️⃣ Прийміть матч — і спілкуйтесь напряму!\n"
-        "5️⃣ Після обміну залиште відгук ⭐️\n\n"
-        "❓ Питання? Пишіть @your\\_support",
+        "1️⃣ /start — налаштувати профіль і додати фото житла\n"
+        "2️⃣ /browse — переглянути мандрівників і лайкати\n"
+        "3️⃣ Взаємний лайк = матч 🎊\n"
+        "4️⃣ /trip — додати свою поїздку\n"
+        "5️⃣ /calendar — вказати коли житло доступне\n"
+        "6️⃣ Після обміну залиште відгук ⭐️\n\n"
+        "📞 Питання? Пишіть @your\\_support",
         parse_mode="Markdown",
     )
-
 
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile(callback: CallbackQuery, state: FSMContext):
