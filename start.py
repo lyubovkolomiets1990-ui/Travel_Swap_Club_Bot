@@ -10,6 +10,10 @@ from db import get_user, create_user, update_user_home
 router = Router()
 
 
+class OnboardingFSM(StatesGroup):
+    waiting_agreement = State()
+
+
 class RegisterHome(StatesGroup):
     waiting_city_country = State()
     waiting_description  = State()
@@ -20,16 +24,18 @@ class RegisterHome(StatesGroup):
 
 def main_menu_kb():
     kb = InlineKeyboardBuilder()
-    kb.button(text="✈️ Додати поїздку",  callback_data="add_trip")
-    kb.button(text="📋 Мої поїздки",     callback_data="my_trips")
-    kb.button(text="❤️ Збережені",       callback_data="my_saved")
-    kb.button(text="📊 Мій рейтинг",     callback_data="my_rating")
+    kb.button(text="✈️ Додати поїздку",   callback_data="add_trip")
+    kb.button(text="📋 Мої поїздки",      callback_data="my_trips")
     kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
-    kb.button(text="📅 Мій календар",       callback_data="my_calendar")
-    kb.button(text="🏠 Змінити профіль", callback_data="edit_profile")
+    kb.button(text="📅 Мій календар",     callback_data="my_calendar")
+    kb.button(text="❤️ Збережені",        callback_data="my_saved")
+    kb.button(text="📊 Мій рейтинг",      callback_data="my_rating")
+    kb.button(text="🏠 Змінити профіль",  callback_data="edit_profile")
     kb.adjust(2)
     return kb.as_markup()
 
+
+# ── /start ────────────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -37,9 +43,7 @@ async def cmd_start(message: Message, state: FSMContext):
     user = await get_user(message.from_user.id)
 
     if user and user["home_city"]:
-        pets_line = ""
-        if user["has_pets"]:
-            pets_line = f"🐾 Тварини: {user['pets_info'] or 'є'}\n"
+        pets_line = f"🐾 Тварини: {user['pets_info'] or 'є'}\n" if user["has_pets"] else ""
         await message.answer(
             f"👋 З поверненням, *{user['name']}*!\n\n"
             f"🏠 {user['home_city']}, {user['home_country']}\n"
@@ -51,20 +55,47 @@ async def cmd_start(message: Message, state: FSMContext):
     else:
         if not user:
             await create_user(message.from_user.id, message.from_user.first_name)
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🚀 Поїхали!", callback_data="agree_and_start")
+        kb.adjust(1)
+
         await message.answer(
-            "🏡 *Ласкаво просимо до Travel Swap Club*\n\n"
-            "Це платформа для обміну житлом між мандрівниками 🌍\n"
-            "Живете у своєму домі — і можете тимчасово обмінятися ним з людьми з інших міст.\n\n"
-            "Наприклад: ви їдете до Барселони — хтось із Барселони може приїхати до вас.\n\n"
-            "Давайте почнемо з базового 👇\n\n"
-            "📍 *Де ви зараз живете?*\n"
-            "_Введіть місто і країну через кому: Айя-Напа, Кіпр_",
+            "🏡 *Перш ніж почати*\n\n"
+            "Travel Swap Club — це спільнота людей які довіряють одне одному свої домівки.\n\n"
+            "Ми допомагаємо знайти партнера для обміну, але фінальне рішення завжди за вами.\n\n"
+            "Кілька простих правил:\n"
+            "• Будьте чесні в описі свого житла\n"
+            "• Перевіряйте партнера перед обміном\n"
+            "• Домовляйтесь письмово в чаті\n"
+            "• Поважайте чужий дім як свій\n\n"
+            "Платформа не є стороною угоди між учасниками — ви домовляєтесь напряму.\n\n"
+            "Готові? Тоді вперед — вас чекає світ відкритих дверей! 🌍",
             parse_mode="Markdown",
+            reply_markup=kb.as_markup(),
         )
-        await state.set_state(RegisterHome.waiting_city_country)
+        await state.set_state(OnboardingFSM.waiting_agreement)
 
 
-# ── Крок 1: Місто і країна ───────────────────────────────────────────────────
+# ── Погодження ────────────────────────────────────────────────────────────────
+
+@router.callback_query(OnboardingFSM.waiting_agreement, F.data == "agree_and_start")
+async def agree_and_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("🎉 Чудово! Починаємо!")
+    await callback.message.answer(
+        "🏡 *Ласкаво просимо до Travel Swap Club!*\n\n"
+        "Це платформа для обміну житлом між мандрівниками 🌍\n\n"
+        "Наприклад: ви їдете до Барселони — хтось із Барселони приїде до вас.\n\n"
+        "Давайте почнемо 👇\n\n"
+        "📍 *Де ви зараз живете?*\n"
+        "_Введіть місто і країну через кому: Айя-Напа, Кіпр_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(RegisterHome.waiting_city_country)
+
+
+# ── Крок 1: Місто і країна ────────────────────────────────────────────────────
 
 @router.message(RegisterHome.waiting_city_country)
 async def home_city_country(message: Message, state: FSMContext):
@@ -84,15 +115,15 @@ async def home_city_country(message: Message, state: FSMContext):
     await state.set_state(RegisterHome.waiting_description)
 
 
-# ── Крок 2: Опис ─────────────────────────────────────────────────────────────
+# ── Крок 2: Опис ──────────────────────────────────────────────────────────────
 
 @router.message(RegisterHome.waiting_description)
 async def home_description(message: Message, state: FSMContext):
     await state.update_data(description=message.text.strip())
     await message.answer(
         "📸 *Надішліть фото вашого житла*\n\n"
-        "Можна надіслати до 5 фото — гості зможуть побачити де вони житимуть.\n\n"
-        "_Коли надішлете всі фото — натисніть кнопку «Готово»_",
+        "Можна до 5 фото — гості побачать де житимуть.\n\n"
+        "_Коли надішлете всі фото — натисніть «Готово»_",
         parse_mode="Markdown",
         reply_markup=_skip_kb("photos_done"),
     )
@@ -100,22 +131,17 @@ async def home_description(message: Message, state: FSMContext):
     await state.set_state(RegisterHome.waiting_photos)
 
 
-# ── Крок 3: Фото ─────────────────────────────────────────────────────────────
+# ── Крок 3: Фото ──────────────────────────────────────────────────────────────
 
 @router.message(RegisterHome.waiting_photos, F.photo)
 async def home_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     photos = data.get("photos", [])
-    # Беремо найбільше фото (останній елемент)
-    file_id = message.photo[-1].file_id
-    photos.append(file_id)
+    photos.append(message.photo[-1].file_id)
     await state.update_data(photos=photos)
-
     count = len(photos)
     if count >= 5:
-        await message.answer(
-            f"✅ {count} фото збережено! Більше не потрібно.",
-        )
+        await message.answer("✅ 5 фото збережено!")
         await _ask_pets(message, state)
     else:
         await message.answer(
@@ -145,7 +171,7 @@ async def _ask_pets(message: Message, state: FSMContext):
     await state.set_state(RegisterHome.waiting_pets)
 
 
-# ── Крок 4: Тварини ──────────────────────────────────────────────────────────
+# ── Крок 4: Тварини ───────────────────────────────────────────────────────────
 
 @router.callback_query(RegisterHome.waiting_pets, F.data == "pets_yes")
 async def pets_yes(callback: CallbackQuery, state: FSMContext):
@@ -153,7 +179,7 @@ async def pets_yes(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(
         "🐶 *Розкажіть про тварин:*\n\n"
-        "_Наприклад: 1 кіт, дуже лагідний. Або: собака середнього розміру, живе на вулиці._",
+        "_Наприклад: 1 кіт, дуже лагідний_",
         parse_mode="Markdown",
     )
     await state.set_state(RegisterHome.waiting_pets_info)
@@ -179,8 +205,8 @@ async def pets_info(message: Message, state: FSMContext):
 async def _save_profile(message: Message, state: FSMContext):
     data = await state.get_data()
     photos_str = ",".join(data.get("photos", []))
-    has_pets   = data.get("has_pets", 0)
-    pets_info  = data.get("pets_info", "")
+    has_pets  = data.get("has_pets", 0)
+    pets_info = data.get("pets_info", "")
 
     await update_user_home(
         message.chat.id,
@@ -189,10 +215,8 @@ async def _save_profile(message: Message, state: FSMContext):
     )
     await state.clear()
 
-    pets_line = ""
-    if has_pets:
-        pets_line = f"🐾 Тварини: {pets_info}\n"
     photos_count = len([p for p in photos_str.split(",") if p])
+    pets_line = f"🐾 Тварини: {pets_info}\n" if has_pets else ""
 
     kb = InlineKeyboardBuilder()
     kb.button(text="✈️ Додати першу поїздку", callback_data="add_trip")
@@ -217,7 +241,7 @@ def _skip_kb(callback_data: str):
     return kb.as_markup()
 
 
-# ── Команди ──────────────────────────────────────────────────────────────────
+# ── Команди ───────────────────────────────────────────────────────────────────
 
 @router.message(Command("trip"))
 async def cmd_trip(message: Message):
@@ -250,9 +274,10 @@ async def cmd_help(message: Message):
         "4️⃣ /trip — додати свою поїздку\n"
         "5️⃣ /calendar — вказати коли житло доступне\n"
         "6️⃣ Після обміну залиште відгук ⭐️\n\n"
-        "📞 Питання? Пишіть @your\\_support",
+        "❓ Питання? Пишіть @your\\_support",
         parse_mode="Markdown",
     )
+
 
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile(callback: CallbackQuery, state: FSMContext):
