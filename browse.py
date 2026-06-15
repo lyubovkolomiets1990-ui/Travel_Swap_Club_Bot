@@ -123,41 +123,71 @@ async def browse_like(callback: CallbackQuery, bot):
             if not existing:
                 await create_match(my_trips[0]["id"], their_trips[0]["id"])
 
-        # Повідомляємо обох
-        match_text_me = (
-            f"🎊 *Взаємний лайк — це МАТЧ!*\n\n"
-            f"👤 {them['name'] if them else 'Мандрівник'}\n"
-            f"🏠 {them['home_city'] if them else ''}, {them['home_country'] if them else ''}\n\n"
-            "📱 Напишіть одне одному і домовляйтесь про обмін!"
-        )
-        match_text_them = (
-            f"🎊 *Взаємний лайк — це МАТЧ!*\n\n"
-            f"👤 {me['name'] if me else 'Мандрівник'}\n"
-            f"🏠 {me['home_city'] if me else ''}, {me['home_country'] if me else ''}\n\n"
-            "📱 Напишіть одне одному і домовляйтесь про обмін!"
+        # Повідомляємо обох — спочатку екран безпеки, потім контакт
+        safety_text = (
+            "🎊 *Взаємний лайк — це МАТЧ!*\n\n"
+            f"👤 *{them['name'] if them else 'Мандрівник'}* з "
+            f"{them['home_city'] if them else ''}, {them['home_country'] if them else ''}\n\n"
+            "─────────────────\n"
+            "🛡️ *Перед тим як писати — рекомендуємо:*\n\n"
+            "1️⃣ *Відеодзвінок* — познайомтесь особисто перед обміном. "
+            "Так ви побачите реальну людину і будинок наживо\n\n"
+            "2️⃣ *Документи на житло* — попросіть фото договору оренди або "
+            "документа про власність, щоб переконатись що людина справді там живе\n\n"
+            "3️⃣ *Особисті документи* — попросіть фото паспорта або ID-картки. "
+            "Це стандартна практика при обміні житлом\n\n"
+            "4️⃣ *Не передавайте ключі без підтвердження* — домовтесь про деталі "
+            "заздалегідь і зафіксуйте їх письмово в чаті\n\n"
+            "─────────────────\n"
+            "✅ Після перевірки — сміливо пишіть!"
         )
 
         kb_contact = InlineKeyboardBuilder()
         try:
             chat = await bot.get_chat(owner_tg)
             if chat.username:
-                kb_contact.button(text=f"✉️ Написати {them['name'] if them else ''}", url=f"t.me/{chat.username}")
+                kb_contact.button(
+                    text=f"✉️ Написати {them['name'] if them else 'партнеру'}",
+                    url=f"t.me/{chat.username}"
+                )
         except Exception:
             pass
+        kb_contact.button(text="📋 Зрозуміло, дякую!", callback_data="safety_ok")
+        kb_contact.adjust(1)
 
-        await callback.message.answer(match_text_me, parse_mode="Markdown",
-                                       reply_markup=kb_contact.as_markup() if kb_contact.export() else None)
+        await callback.message.answer(safety_text, parse_mode="Markdown",
+                                       reply_markup=kb_contact.as_markup())
+
+        # Для другого учасника
+        safety_text2 = (
+            "🎊 *Взаємний лайк — це МАТЧ!*\n\n"
+            f"👤 *{me['name'] if me else 'Мандрівник'}* з "
+            f"{me['home_city'] if me else ''}, {me['home_country'] if me else ''}\n\n"
+            "─────────────────\n"
+            "🛡️ *Перед тим як писати — рекомендуємо:*\n\n"
+            "1️⃣ *Відеодзвінок* — познайомтесь особисто перед обміном\n\n"
+            "2️⃣ *Документи на житло* — попросіть фото договору або документа про власність\n\n"
+            "3️⃣ *Особисті документи* — попросіть фото паспорта або ID-картки\n\n"
+            "4️⃣ *Не передавайте ключі без підтвердження* — домовтесь письмово\n\n"
+            "─────────────────\n"
+            "✅ Після перевірки — сміливо пишіть!"
+        )
 
         kb_contact2 = InlineKeyboardBuilder()
         try:
             chat2 = await bot.get_chat(my_tg_id)
             if chat2.username:
-                kb_contact2.button(text=f"✉️ Написати {me['name'] if me else ''}", url=f"t.me/{chat2.username}")
+                kb_contact2.button(
+                    text=f"✉️ Написати {me['name'] if me else 'партнеру'}",
+                    url=f"t.me/{chat2.username}"
+                )
         except Exception:
             pass
+        kb_contact2.button(text="📋 Зрозуміло, дякую!", callback_data="safety_ok")
+        kb_contact2.adjust(1)
 
         try:
-            await bot.send_message(owner_tg, match_text_them, parse_mode="Markdown",
+            await bot.send_message(owner_tg, safety_text2, parse_mode="Markdown",
                                    reply_markup=kb_contact2.as_markup() if kb_contact2.export() else None)
         except Exception:
             pass
@@ -226,3 +256,11 @@ async def browse_next(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
     await show_browse(callback.from_user.id, callback.message, idx)
+
+
+# ── Кнопка "Зрозуміло" після екрану безпеки ─────────────────────────────────
+
+@router.callback_query(F.data == "safety_ok")
+async def safety_ok(callback: CallbackQuery):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("✅ Удачі з обміном! 🏡", show_alert=False)
