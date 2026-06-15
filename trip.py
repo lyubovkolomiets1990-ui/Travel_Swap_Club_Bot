@@ -82,7 +82,7 @@ async def step_dest_city(message: Message, state: FSMContext):
 async def step_dest_country(message: Message, state: FSMContext):
     await state.update_data(dest_country=message.text.strip())
     await message.answer(
-        "📅 *Дата виїзду?*\nФормат: ДД.ММ.РРРР  (_наприклад: 10.08.2025_)",
+        "📅 *Дата виїзду?*\nФормат: ДД.ММ.РРРР  (_наприклад: 10.08.2026_)",
         parse_mode="Markdown",
     )
     await state.set_state(AddTrip.waiting_date_from)
