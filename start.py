@@ -44,9 +44,9 @@ async def cmd_start(message: Message, state: FSMContext):
         if not user:
             await create_user(message.from_user.id, message.from_user.first_name)
         await message.answer(
-            "🏡 *Ласкаво просимо до HomeExchange Bot!*\n\n"
+           "🏡 *Ласкаво просимо до Travel Swap Club Bot!*\n\n"
             "Обмінюйтесь житлом з мандрівниками по всьому світу 🌍\n"
-            "Ви їдете до Барселони — хтось із Барселони приїде до вас!\n\n"
+            "Ви їдете до Барселони - хтось із Барселони приїде до вас!\n\n"
             "Для початку розкажіть де ви живете.\n\n"
             "📍 *В якому місті?*",
             parse_mode="Markdown",
