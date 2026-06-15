@@ -309,3 +309,66 @@ async def get_liked_users(from_telegram_id: int) -> list:
             (from_telegram_id,),
         ) as cursor:
             return await cursor.fetchall()
+
+
+# ── Блокування місяців (календар доступності) ────────────────────────────────
+
+async def init_calendar_table():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS blocked_months (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                year INTEGER NOT NULL,
+                reason TEXT DEFAULT '',
+                UNIQUE(telegram_id, month, year)
+            )
+        """)
+        await db.commit()
+
+
+async def block_month(telegram_id: int, month: int, year: int, reason: str = ""):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO blocked_months (telegram_id, month, year, reason) VALUES (?,?,?,?)",
+            (telegram_id, month, year, reason),
+        )
+        await db.commit()
+
+
+async def unblock_month(telegram_id: int, month: int, year: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM blocked_months WHERE telegram_id=? AND month=? AND year=?",
+            (telegram_id, month, year),
+        )
+        await db.commit()
+
+
+async def get_blocked_months(telegram_id: int) -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM blocked_months WHERE telegram_id=? ORDER BY year, month",
+            (telegram_id,),
+        ) as cursor:
+            return await cursor.fetchall()
+
+
+async def is_month_blocked(telegram_id: int, month: int, year: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM blocked_months WHERE telegram_id=? AND month=? AND year=?",
+            (telegram_id, month, year),
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+
+async def get_pending_matches() -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM matches WHERE status='pending' ORDER BY created_at",
+        ) as cursor:
+            return await cursor.fetchall()
