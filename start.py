@@ -12,7 +12,7 @@ router = Router()
 
 class RegisterHome(StatesGroup):
     waiting_city_country = State()
-waiting_description  = State()
+    waiting_description  = State()
 
 
 def main_menu_kb():
@@ -43,36 +43,35 @@ async def cmd_start(message: Message, state: FSMContext):
         if not user:
             await create_user(message.from_user.id, message.from_user.first_name)
         await message.answer(
-           "🏡 *Ласкаво просимо до Travel Swap Club Bot!*\n\n"
-            "Обмінюйтесь житлом з мандрівниками по всьому світу 🌍\n"
-            "Ви їдете до Барселони - хтось із Барселони приїде до вас!\n\n"
-            "Для початку розкажіть де ви живете.\n\n"
-            "📍 *В якому місті?*",
+            "🏡 *Ласкаво просимо до Travel Swap Club*\n\n"
+            "Це платформа для обміну житлом між мандрівниками 🌍\n"
+            "Живете у своєму домі — і можете тимчасово обмінятися ним з людьми з інших міст.\n\n"
+            "Наприклад: ви їдете до Барселони — хтось із Барселони може приїхати до вас.\n\n"
+            "Давайте почнемо з базового 👇\n\n"
+            "📍 *В якому місті ви зараз?*\n"
+            "_Введіть місто і країну через кому: Айя-Напа, Кіпр_",
             parse_mode="Markdown",
         )
-        await state.set_state(RegisterHome.waiting_city)
+        await state.set_state(RegisterHome.waiting_city_country)
 
 
 @router.message(Command("trip"))
 async def cmd_trip(message: Message):
-    from aiogram.utils.keyboard import InlineKeyboardBuilder as IKB
-    kb = IKB()
+    kb = InlineKeyboardBuilder()
     kb.button(text="✈️ Додати поїздку", callback_data="add_trip")
     await message.answer("Натисніть щоб додати нову поїздку:", reply_markup=kb.as_markup())
 
 
 @router.message(Command("saved"))
 async def cmd_saved(message: Message):
-    from aiogram.utils.keyboard import InlineKeyboardBuilder as IKB
-    kb = IKB()
+    kb = InlineKeyboardBuilder()
     kb.button(text="❤️ Переглянути збережених", callback_data="my_saved")
     await message.answer("Ваші збережені хости:", reply_markup=kb.as_markup())
 
 
 @router.message(Command("rating"))
 async def cmd_rating(message: Message):
-    from aiogram.utils.keyboard import InlineKeyboardBuilder as IKB
-    kb = IKB()
+    kb = InlineKeyboardBuilder()
     kb.button(text="📊 Переглянути рейтинг", callback_data="my_rating")
     await message.answer("Ваш рейтинг хоста:", reply_markup=kb.as_markup())
 
@@ -93,20 +92,19 @@ async def cmd_help(message: Message):
 
 # ── Реєстрація ───────────────────────────────────────────────────────────────
 
-@router.message(RegisterHome.waiting_city)
-async def home_city(message: Message, state: FSMContext):
-    await state.update_data(city=message.text.strip())
-    await message.answer("🌍 *В якій країні?* (наприклад: Кіпр, Іспанія, Україна)", parse_mode="Markdown")
-    await state.set_state(RegisterHome.waiting_country)
-
-
-@router.message(RegisterHome.waiting_country)
-async def home_country(message: Message, state: FSMContext):
-    await state.update_data(country=message.text.strip())
+@router.message(RegisterHome.waiting_city_country)
+async def home_city_country(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if "," in text:
+        city, country = [x.strip() for x in text.split(",", 1)]
+    else:
+        city = text
+        country = text
+    await state.update_data(city=city, country=country)
     await message.answer(
         "📝 *Опишіть своє житло:*\n"
         "Скільки кімнат, що поруч, Wi-Fi, особливості?\n\n"
-        "_Наприклад: 2-кімн. квартира біля моря, Барселона. Балкон, Wi-Fi, паркінг._",
+        "_Наприклад: 2-кімн. квартира біля моря. Балкон, Wi-Fi, паркінг._",
         parse_mode="Markdown",
     )
     await state.set_state(RegisterHome.waiting_description)
@@ -136,6 +134,9 @@ async def home_description(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer("📍 *В якому місті ви живете?*", parse_mode="Markdown")
-    await state.set_state(RegisterHome.waiting_city)
+    await callback.message.answer(
+        "📍 *Де ви живете?*\nВведіть місто і країну через кому:\n_Наприклад: Айя-Напа, Кіпр_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(RegisterHome.waiting_city_country)
     await callback.answer()
