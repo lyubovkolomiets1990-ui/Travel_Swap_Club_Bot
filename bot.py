@@ -1,17 +1,11 @@
 import asyncio
 import logging
+import os
 import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
-
-from config import BOT_TOKEN
-import db
-import start as start_handler
-import trip as trip_handler
-import matches as matches_handler
-import reviews as reviews_handler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,10 +26,24 @@ async def set_commands(bot: Bot):
 
 
 async def main():
+    token = os.getenv("BOT_TOKEN", "")
+    if not token:
+        logger.error("❌ BOT_TOKEN не вказано!")
+        sys.exit(1)
+
+    db_path = os.getenv("DB_PATH", "/data/home_exchange.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    import db
+    import start as start_handler
+    import trip as trip_handler
+    import matches as matches_handler
+    import reviews as reviews_handler
+
     logger.info("🚀 Запуск Travel Swap Club Bot...")
     await db.init_db()
 
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(token=token)
     dp  = Dispatcher(storage=MemoryStorage())
 
     dp.include_router(start_handler.router)
