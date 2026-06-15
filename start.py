@@ -11,9 +11,8 @@ router = Router()
 
 
 class RegisterHome(StatesGroup):
-    waiting_city        = State()
-    waiting_country     = State()
-    waiting_description = State()
+    waiting_city_country = State()
+waiting_description  = State()
 
 
 def main_menu_kb():
@@ -107,7 +106,7 @@ async def home_country(message: Message, state: FSMContext):
     await message.answer(
         "📝 *Опишіть своє житло:*\n"
         "Скільки кімнат, що поруч, Wi-Fi, особливості?\n\n"
-        "_Наприклад: 2-кімн. квартира біля моря, Айя-Напа. Балкон, Wi-Fi, паркінг._",
+        "_Наприклад: 2-кімн. квартира біля моря, Барселона. Балкон, Wi-Fi, паркінг._",
         parse_mode="Markdown",
     )
     await state.set_state(RegisterHome.waiting_description)
