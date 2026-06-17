@@ -23,6 +23,7 @@ async def set_commands(bot: Bot):
         BotCommand(command="rating", description="📊 Мій рейтинг"),
         BotCommand(command="browse",   description="🔍 Переглянути мандрівників"),
         BotCommand(command="calendar", description="📅 Календар доступності"),
+        BotCommand(command="top",      description="⭐️ Топ за рейтингом"),
         BotCommand(command="help",   description="❓ Допомога"),
     ])
 
@@ -58,8 +59,9 @@ async def main():
     dp.include_router(browse_handler.router)
     dp.include_router(calendar_handler.router)
 
-    from db import init_calendar_table
+    from db import init_calendar_table, init_views_table
     await init_calendar_table()
+    await init_views_table()
     asyncio.create_task(run_reminders(bot))
     await set_commands(bot)
     me = await bot.get_me()
