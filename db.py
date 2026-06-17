@@ -372,3 +372,61 @@ async def get_pending_matches() -> list:
             "SELECT * FROM matches WHERE status='pending' ORDER BY created_at",
         ) as cursor:
             return await cursor.fetchall()
+
+
+async def get_all_users_with_home() -> list:
+    """Всі користувачі у кого є профіль з житлом"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT u.*,
+                t.id as trip_id,
+                t.destination_city,
+                t.destination_country,
+                t.date_from,
+                t.date_to,
+                t.guests_count,
+                t.looking_for,
+                t.traveler_type
+               FROM users u
+               LEFT JOIN trips t ON t.user_id = u.id AND t.status = 'active'
+               WHERE u.home_city IS NOT NULL AND u.home_city != ''
+               GROUP BY u.id
+               ORDER BY t.date_from ASC, u.registered_at DESC"""
+        ) as cursor:
+            return await cursor.fetchall()
+
+
+# ── Перегляди в browse (щоб не показувати повторно) ──────────────────────────
+
+async def init_views_table():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS browse_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                viewer_telegram_id INTEGER NOT NULL,
+                viewed_telegram_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(viewer_telegram_id, viewed_telegram_id)
+            )
+        """)
+        await db.commit()
+
+
+async def mark_viewed(viewer_tg_id: int, viewed_tg_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO browse_views (viewer_telegram_id, viewed_telegram_id) VALUES (?, ?)",
+            (viewer_tg_id, viewed_tg_id),
+        )
+        await db.commit()
+
+
+async def get_viewed_ids(viewer_tg_id: int) -> set:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT viewed_telegram_id FROM browse_views WHERE viewer_telegram_id=?",
+            (viewer_tg_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {r[0] for r in rows}
