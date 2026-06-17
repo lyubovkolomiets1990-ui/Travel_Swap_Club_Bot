@@ -180,6 +180,24 @@ async def show_browse(message: Message, my_tg_id: int, idx: int, sort_by_rating:
 
         )
         return
+
+    # Якщо сортуємо за рейтингом і ще ніхто не отримав відгуків
+    if sort_by_rating:
+        any_rated = any(c.get("_review_count", 0) > 0 for c in cards)
+        if not any_rated:
+            kb = InlineKeyboardBuilder()
+            kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
+            await message.answer(
+                "⭐️ *Поки що немає відгуків*\n\n"
+                "Жоден мандрівник ще не отримав рейтинг — спільнота тільки починає рости!\n\n"
+                "Щойно з'являться перші обміни і відгуки — тут покажемо тих, "
+                "у кого найвищий рейтинг 🏆\n\n"
+                "А поки можете переглянути всіх мандрівників:",
+                parse_mode="Markdown",
+                reply_markup=kb.as_markup(),
+            )
+            return
+
     if idx >= len(cards):
         kb = InlineKeyboardBuilder()
         kb.button(text="🔄 Почати спочатку", callback_data="browse_reset")
@@ -267,7 +285,7 @@ async def view_specific_user(callback: CallbackQuery):
     target_tg_id = int(callback.data.split("_")[2])
     my_tg_id = callback.from_user.id
 
-    cards = await get_browse_cards(my_tg_id)
+    cards = await get_browse_cards(my_tg_id, skip_viewed=False)
     target_card = None
     target_idx = 0
     for i, card in enumerate(cards):
