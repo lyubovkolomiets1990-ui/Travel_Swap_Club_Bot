@@ -254,7 +254,13 @@ async def browse_like(callback: CallbackQuery, bot):
     if next_idx < len(cards):
         await send_card(callback.message, cards[next_idx], next_idx, len(cards))
     else:
-        await callback.message.answer("Ви переглянули всіх! Повертайтесь пізніше")
+        kb_end = InlineKeyboardBuilder()
+        kb_end.button(text="🔄 Почати спочатку", callback_data="browse_reset")
+        await callback.message.answer(
+            "✅ Ви переглянули всіх нових мандрівників!\n"
+            "Повертайтесь пізніше — база росте щодня 🌱",
+            reply_markup=kb_end.as_markup(),
+        )
 
 
 @router.callback_query(F.data.startswith("bs_"))
