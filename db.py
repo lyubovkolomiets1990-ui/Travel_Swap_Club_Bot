@@ -141,7 +141,7 @@ async def get_active_trips():
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT t.*, u.telegram_id, u.name, u.home_city, u.home_country,
-                      u.home_description
+                      u.home_description, u.home_photos, u.has_pets, u.pets_info
                FROM trips t JOIN users u ON t.user_id = u.id
                WHERE t.status = 'active'"""
         ) as cursor:
