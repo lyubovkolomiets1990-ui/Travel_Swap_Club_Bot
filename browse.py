@@ -35,9 +35,10 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
             continue
         if tg_id in viewed_ids:
             continue
-        has_city  = trip["home_city"] and trip["home_city"] not in ("", "None")
-        has_desc  = trip["home_description"] and trip["home_description"] not in ("", "None")
-        has_photo = trip["home_photos"] and trip["home_photos"] not in ("", "None")
+        trip_keys = trip.keys()
+        has_city  = ("home_city" in trip_keys and trip["home_city"]) and trip["home_city"] not in ("", "None")
+        has_desc  = ("home_description" in trip_keys and trip["home_description"]) and trip["home_description"] not in ("", "None")
+        has_photo = ("home_photos" in trip_keys and trip["home_photos"]) and trip["home_photos"] not in ("", "None")
         if not (has_city and has_desc and has_photo):
             continue
         seen_users.add(tg_id)
