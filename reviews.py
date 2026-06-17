@@ -282,6 +282,7 @@ async def my_rating(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_saved")
 async def my_saved(callback: CallbackQuery):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     liked = await get_liked_users(callback.from_user.id)
     if not liked:
         await callback.message.answer(
@@ -292,12 +293,15 @@ async def my_saved(callback: CallbackQuery):
         return
 
     text = "❤️ *Збережені хости:*\n\n"
+    kb = InlineKeyboardBuilder()
     for u in liked:
         rating = await get_user_rating(u["id"])
         stars = f"⭐️ {rating['average']}" if rating else "немає відгуків"
         text += f"👤 *{u['name']}* — {u['home_city']}, {u['home_country']} · {stars}\n"
+        kb.button(text="👀 " + u["name"], callback_data="view_user_" + str(u["telegram_id"]))
+    kb.adjust(1)
 
-    await callback.message.answer(text, parse_mode="Markdown")
+    await callback.message.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     await callback.answer()
 
 
