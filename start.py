@@ -27,6 +27,7 @@ def main_menu_kb():
     kb.button(text="✈️ Додати поїздку",   callback_data="add_trip")
     kb.button(text="📋 Мої поїздки",      callback_data="my_trips")
     kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
+    kb.button(text="⭐️ Топ за рейтингом",  callback_data="browse_top")
     kb.button(text="📅 Мій календар",     callback_data="my_calendar")
     kb.button(text="❤️ Збережені",        callback_data="my_saved")
     kb.button(text="📊 Мій рейтинг",      callback_data="my_rating")
@@ -267,18 +268,13 @@ async def cmd_rating(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "📖 *Як користуватись Travel Swap Club:*\n\n"
-        "1️⃣ /start — створити профіль і додати фото житла\n"
-        "2️⃣ /browse — переглядати мандрівників як в Tinder\n"
-        "3️⃣ Взаємний лайк = матч 🎊 → пишіть одне одному\n"
-        "4️⃣ /trip — додати свою поїздку (куди і коли їдете)\n"
-        "5️⃣ /calendar — заблокувати дати коли житло недоступне\n"
-        "6️⃣ /saved — збережені хости яких ви лайкнули\n"
-        "7️⃣ /rating — ваш рейтинг після обмінів ⭐️\n"
-        "8️⃣ Після обміну — залиште відгук за 4 критеріями\n\n"
-        "🛡️ *Безпека:*\n"
-        "Перед обміном завжди робіть відеодзвінок, "
-        "перевіряйте документи і домовляйтесь письмово.\n\n"
+        "📖 *Як користуватись ботом:*\n\n"
+        "1️⃣ /start — налаштувати профіль і додати фото житла\n"
+        "2️⃣ /browse — переглянути мандрівників і лайкати\n"
+        "3️⃣ Взаємний лайк = матч 🎊\n"
+        "4️⃣ /trip — додати свою поїздку\n"
+        "5️⃣ /calendar — вказати коли житло доступне\n"
+        "6️⃣ Після обміну залиште відгук ⭐️\n\n"
         "❓ Питання? Пишіть @your\\_support",
         parse_mode="Markdown",
     )
