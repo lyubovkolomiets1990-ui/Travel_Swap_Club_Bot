@@ -439,6 +439,9 @@ async def answer_question(callback: CallbackQuery, bot):
     me = await get_user(callback.from_user.id)
     me_name = me["name"] if me else "Хтось"
 
+    # Прибираємо кнопку одразу, щоб не можна було натиснути кілька разів
+    await callback.message.edit_reply_markup(reply_markup=None)
+
     safety_note = (
         "\n\n─────────────────\n"
         "🛡️ *Перед тим як писати — рекомендуємо:*\n"
