@@ -80,6 +80,7 @@ async def start_review(callback: CallbackQuery, state: FSMContext):
 
     existing = await get_review(match_id, user["id"])
     if existing:
+        await callback.message.edit_reply_markup(reply_markup=None)
         await callback.answer("Ви вже залишили відгук для цього обміну ✅", show_alert=True)
         return
 
