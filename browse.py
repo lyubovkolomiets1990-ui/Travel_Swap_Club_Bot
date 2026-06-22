@@ -326,10 +326,13 @@ async def view_specific_user(callback: CallbackQuery):
 async def _send_match(bot, message, me, them, my_tg_id, owner_tg):
     my_trips = await get_user_trips(my_tg_id)
     their_trips = await get_user_trips(owner_tg)
+    match_id = None
     if my_trips and their_trips:
         existing = await get_existing_match(my_trips[0]["id"], their_trips[0]["id"])
-        if not existing:
-            await create_match(my_trips[0]["id"], their_trips[0]["id"])
+        if existing:
+            match_id = existing["id"] if hasattr(existing, "keys") else existing
+        else:
+            match_id = await create_match(my_trips[0]["id"], their_trips[0]["id"])
 
     them_name = them["name"] if them else "Мандрівник"
     them_city = them["home_city"] if them else ""
@@ -346,7 +349,9 @@ async def _send_match(bot, message, me, them, my_tg_id, owner_tg):
         "2. Документи на житло — договір або право власності\n"
         "3. Особисті документи — паспорт або ID\n"
         "4. Домовляйтесь письмово\n\n"
-        "Після перевірки — сміливо пишіть!"
+        "Після перевірки — сміливо пишіть!\n\n"
+        "👉 👈*Після обміну будь ласка залиште відгук — це дуже важливо* 👈\n"
+        "Відгуки допомагають усій спільноті обирати надійних партнерів."
     )
 
     kb1 = InlineKeyboardBuilder()
@@ -356,6 +361,9 @@ async def _send_match(bot, message, me, them, my_tg_id, owner_tg):
             kb1.button(text="Написати " + them_name, url="t.me/" + chat.username)
     except Exception:
         pass
+    if match_id:
+        kb1.button(text="⭐️ Залишити відгук", callback_data="start_review_" + str(match_id))
+        kb1.button(text="❌ Не домовились — шукати далі", callback_data="cancel_match_" + str(match_id))
     kb1.button(text="Зрозуміло!", callback_data="safety_ok")
     kb1.adjust(1)
 
@@ -372,6 +380,9 @@ async def _send_match(bot, message, me, them, my_tg_id, owner_tg):
             kb2.button(text="Написати " + me_name, url="t.me/" + chat2.username)
     except Exception:
         pass
+    if match_id:
+        kb2.button(text="⭐️ Залишити відгук", callback_data="start_review_" + str(match_id))
+        kb2.button(text="❌ Не домовились — шукати далі", callback_data="cancel_match_" + str(match_id))
     kb2.button(text="Зрозуміло!", callback_data="safety_ok")
     kb2.adjust(1)
 
@@ -469,6 +480,22 @@ async def answer_question(callback: CallbackQuery, bot):
         await callback.answer("Повідомлено! Партнер може написати вам напряму.")
     except Exception:
         await callback.answer("Не вдалось надіслати", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("cancel_match_"))
+async def cancel_match(callback: CallbackQuery):
+    import db as _db
+    match_id = int(callback.data.split("_")[2])
+    await _db.update_match_status(match_id, "cancelled")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔍 Переглянути інших", callback_data="browse_start")
+    await callback.message.answer(
+        "Зрозуміло — іноді обмін не складається, і це нормально.\n\n"
+        "Можете продовжити пошук іншого партнера 👇",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer("Матч закрито")
 
 
 @router.callback_query(F.data == "safety_ok")
