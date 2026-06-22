@@ -28,6 +28,7 @@ def main_menu_kb():
     kb.button(text="📋 Мої поїздки",      callback_data="my_trips")
     kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
     kb.button(text="⭐️ Топ за рейтингом",  callback_data="browse_top")
+    kb.button(text="🔎 Знайти місто",       callback_data="browse_find")
     kb.button(text="📅 Мій календар",     callback_data="my_calendar")
     kb.button(text="❤️ Збережені",        callback_data="my_saved")
     kb.button(text="📊 Мій рейтинг",      callback_data="my_rating")
