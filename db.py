@@ -15,6 +15,7 @@ async def init_db():
                 home_photos TEXT DEFAULT '',
                 has_pets INTEGER DEFAULT 0,
                 pets_info TEXT DEFAULT '',
+                verification_status TEXT DEFAULT 'new',
                 registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -82,6 +83,7 @@ async def init_db():
             ("has_pets", "0"),
             ("pets_info", "''"),
             ("extra_info", "''"),
+            ("verification_status", "'new'"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT {default}")
@@ -91,6 +93,13 @@ async def init_db():
             await db.execute("ALTER TABLE matches ADD COLUMN reminder_sent INTEGER DEFAULT 0")
         except Exception:
             pass
+        # Існуючих користувачів із заповненим профілем одразу позначаємо verified,
+        # щоб нова верифікація стосувалась лише НОВИХ реєстрацій після цього оновлення
+        await db.execute(
+            """UPDATE users SET verification_status='verified'
+               WHERE home_city IS NOT NULL AND home_city != ''
+               AND (verification_status IS NULL OR verification_status='new')"""
+        )
         await db.commit()
     print("✅ База даних ініціалізована")
 
@@ -111,6 +120,25 @@ async def create_user(telegram_id: int, name: str):
             (telegram_id, name),
         )
         await db.commit()
+
+
+async def set_verification_status(telegram_id: int, status: str):
+    """status: 'new', 'verified', 'rejected'"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET verification_status=? WHERE telegram_id=?",
+            (status, telegram_id),
+        )
+        await db.commit()
+
+
+async def get_pending_verifications() -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE verification_status='new' ORDER BY registered_at"
+        ) as cursor:
+            return await cursor.fetchall()
 
 
 async def update_user_home(telegram_id: int, city: str, country: str,
@@ -227,7 +255,7 @@ async def get_active_trips():
         async with db.execute(
             """SELECT t.*, u.telegram_id, u.name, u.home_city, u.home_country,
                       u.home_description, u.home_photos, u.has_pets, u.pets_info,
-                      u.extra_info
+                      u.extra_info, u.verification_status
                FROM trips t JOIN users u ON t.user_id = u.id
                WHERE t.status = 'active'"""
         ) as cursor:
@@ -587,3 +615,49 @@ async def get_all_known_cities() -> list:
             for row in await cursor.fetchall():
                 cities.add(row[0])
         return list(cities)
+
+
+# ── Блокування користувачів ───────────────────────────────────────────────────
+
+async def init_bans_table():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS banned_users (
+                telegram_id INTEGER PRIMARY KEY,
+                reason TEXT DEFAULT '',
+                banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.commit()
+
+
+async def ban_user(telegram_id: int, reason: str = ""):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO banned_users (telegram_id, reason) VALUES (?, ?)",
+            (telegram_id, reason),
+        )
+        await db.commit()
+
+
+async def unban_user(telegram_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM banned_users WHERE telegram_id=?", (telegram_id,))
+        await db.commit()
+
+
+async def is_banned(telegram_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM banned_users WHERE telegram_id=?", (telegram_id,)
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+
+async def get_all_banned() -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM banned_users ORDER BY banned_at DESC"
+        ) as cursor:
+            return await cursor.fetchall()
