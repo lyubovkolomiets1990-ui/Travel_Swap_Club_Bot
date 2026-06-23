@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from db import get_user, create_user, update_user_home, delete_user_profile, get_all_known_cities
-from config import ADMIN_IDS
+from config import ADMIN_IDS, VERIFICATION_CHANNEL_ID
 import difflib
 
 router = Router()
@@ -328,22 +328,22 @@ async def _ask_extra_info(message: Message, state: FSMContext):
 
 
 @router.message(RegisterHome.waiting_extra_info)
-async def extra_info_text(message: Message, state: FSMContext):
+async def extra_info_text(message: Message, state: FSMContext, bot):
     await state.update_data(extra_info=message.text.strip())
-    await _save_profile(message, state)
+    await _save_profile(message, state, bot)
 
 
 @router.callback_query(RegisterHome.waiting_extra_info, F.data == "extra_info_skip")
-async def extra_info_skip(callback: CallbackQuery, state: FSMContext):
+async def extra_info_skip(callback: CallbackQuery, state: FSMContext, bot):
     await state.update_data(extra_info="")
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
-    await _save_profile(callback.message, state)
+    await _save_profile(callback.message, state, bot)
 
 
 # ── Збереження профілю ────────────────────────────────────────────────────────
 
-async def _save_profile(message: Message, state: FSMContext):
+async def _save_profile(message: Message, state: FSMContext, bot=None):
     data = await state.get_data()
     photos_str = ",".join(data.get("photos", []))
     has_pets   = data.get("has_pets", 0)
@@ -363,7 +363,7 @@ async def _save_profile(message: Message, state: FSMContext):
     extra_line = f"ℹ️ Інше: {extra_info}\n" if extra_info else ""
 
     kb = InlineKeyboardBuilder()
-    kb.button(text="✈️ Додати першу поїздку", callback_data="add_trip")
+    kb.button(text="✈️ Додати поїздку", callback_data="add_trip")
 
     await message.answer(
         f"✅ *Профіль збережено!*\n\n"
@@ -372,10 +372,75 @@ async def _save_profile(message: Message, state: FSMContext):
         f"📸 Фото: {photos_count} шт.\n"
         f"{pets_line}"
         f"{extra_line}\n"
-        "Тепер додайте поїздку, щоб почати шукати матчі!",
+        "Тепер додайте поїздку — і профіль одразу відправиться на верифікацію!",
         parse_mode="Markdown",
         reply_markup=kb.as_markup(),
     )
+
+
+async def _notify_admins_new_user(bot, telegram_id: int, trip: dict = None):
+    from aiogram.types import InputMediaPhoto
+
+    user = await get_user(telegram_id)
+    if not user:
+        return
+
+    pets_line = f"🐾 Тварини: {user['pets_info']}\n" if user["has_pets"] else ""
+    extra = user["extra_info"] if "extra_info" in user.keys() else ""
+    extra_line = f"ℹ️ Інше: {extra}\n" if extra else ""
+    photos = [p for p in (user["home_photos"] or "").split(",") if p]
+
+    trip_line = ""
+    if trip:
+        trip_line = (
+            f"\n✈️ *Поїздка:*\n"
+            f"Куди: {trip['destination_city']}, {trip['destination_country']}\n"
+            f"Дати: {trip['date_from']} — {trip['date_to']}\n"
+            f"Гостей: {trip['guests_count']}\n"
+        )
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Верифікувати", callback_data="verify_approve_" + str(telegram_id))
+    kb.button(text="❌ Відхилити", callback_data="verify_reject_" + str(telegram_id))
+    kb.adjust(2)
+
+    caption = (
+        f"🆕 *Новий профіль на верифікацію*\n\n"
+        f"👤 {user['name']}\n"
+        f"🏠 Живе: {user['home_city']}, {user['home_country']}\n"
+        f"📝 {user['home_description']}\n"
+        f"{pets_line}"
+        f"{extra_line}"
+        f"{trip_line}\n"
+        f"🆔 {telegram_id}"
+    )
+
+    targets = [VERIFICATION_CHANNEL_ID] if VERIFICATION_CHANNEL_ID else ADMIN_IDS
+
+    for target_id in targets:
+        try:
+            if len(photos) > 1:
+                # Альбом — підпис іде під останнім фото, кнопки окремим повідомленням після
+                media = [InputMediaPhoto(media=p) for p in photos[:10]]
+                media[-1].caption = caption
+                media[-1].parse_mode = "Markdown"
+                await bot.send_media_group(target_id, media=media)
+                await bot.send_message(
+                    target_id, "👆 Рішення по профілю вище:",
+                    reply_markup=kb.as_markup(),
+                )
+            elif len(photos) == 1:
+                await bot.send_photo(
+                    target_id, photo=photos[0], caption=caption,
+                    parse_mode="Markdown", reply_markup=kb.as_markup(),
+                )
+            else:
+                await bot.send_message(
+                    target_id, caption,
+                    parse_mode="Markdown", reply_markup=kb.as_markup(),
+                )
+        except Exception:
+            pass
 
 
 # ── Допоміжні ─────────────────────────────────────────────────────────────────
@@ -529,6 +594,101 @@ async def admin_confirm_delete(callback: CallbackQuery, bot):
 async def admin_cancel_delete(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Скасовано")
+
+
+# ── Верифікація нових профілів ────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("verify_approve_"))
+async def verify_approve(callback: CallbackQuery, bot):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[2])
+    from db import set_verification_status
+    await set_verification_status(target_id, "verified")
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("✅ Верифіковано!")
+
+    try:
+        await bot.send_message(
+            target_id,
+            "🎉 *Ваш профіль верифіковано!*\n\n"
+            "Тепер його видно іншим мандрівникам у пошуку. "
+            "Додайте поїздку, щоб почати шукати матчі! ✈️",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("verify_reject_"))
+async def verify_reject(callback: CallbackQuery, bot):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[2])
+    from db import set_verification_status
+    await set_verification_status(target_id, "rejected")
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("❌ Відхилено")
+
+    try:
+        await bot.send_message(
+            target_id,
+            "😔 *Ваш профіль не пройшов верифікацію*\n\n"
+            "Перевірте, чи фото та опис відповідають правилам спільноти, "
+            "і спробуйте оновити профіль через «🏠 Змінити профіль».\n\n"
+            "Питання? Пишіть @your\\_support",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        pass
+
+
+@router.message(Command("pending"))
+async def cmd_pending_verifications(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    from db import get_pending_verifications
+    pending = await get_pending_verifications()
+
+    if not pending:
+        await message.answer("✅ Немає профілів що очікують верифікації.")
+        return
+
+    await message.answer(f"⏳ Очікують верифікації: {len(pending)}")
+
+    for user in pending:
+        pets_line = f"🐾 Тварини: {user['pets_info']}\n" if user["has_pets"] else ""
+        photos = (user["home_photos"] or "").split(",") if user["home_photos"] else []
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Верифікувати", callback_data="verify_approve_" + str(user["telegram_id"]))
+        kb.button(text="❌ Відхилити", callback_data="verify_reject_" + str(user["telegram_id"]))
+        kb.adjust(2)
+
+        caption = (
+            f"👤 {user['name']}\n"
+            f"🏠 {user['home_city']}, {user['home_country']}\n"
+            f"📝 {user['home_description']}\n"
+            f"{pets_line}"
+            f"🆔 {user['telegram_id']}"
+        )
+
+        try:
+            if photos and photos[0]:
+                await message.answer_photo(
+                    photo=photos[0], caption=caption, reply_markup=kb.as_markup()
+                )
+            else:
+                await message.answer(caption, reply_markup=kb.as_markup())
+        except Exception:
+            await message.answer(caption, reply_markup=kb.as_markup())
 
 
 @router.callback_query(F.data == "edit_profile")
