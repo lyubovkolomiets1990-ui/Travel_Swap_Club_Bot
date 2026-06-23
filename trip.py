@@ -15,6 +15,7 @@ DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
 class AddTrip(StatesGroup):
     waiting_dest_city    = State()
     waiting_dest_country = State()
+    waiting_dates_choice = State()   # є дати чи ще планую
     waiting_date_from    = State()
     waiting_date_to      = State()
     waiting_guests       = State()
@@ -82,7 +83,7 @@ async def step_dest_city(message: Message, state: FSMContext):
 async def step_dest_country(message: Message, state: FSMContext):
     await state.update_data(dest_country=message.text.strip())
     await message.answer(
-        "📅 *Дата виїзду?*\nФормат: ДД.ММ.РРРР  (_наприклад: 10.08.2026_)",
+        "📅 *Дата виїзду?*\nФормат: ДД.ММ.РРРР  (_наприклад: 10.08.2025_)",
         parse_mode="Markdown",
     )
     await state.set_state(AddTrip.waiting_date_from)
