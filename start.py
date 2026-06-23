@@ -353,6 +353,19 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
     has_pets   = data.get("has_pets", 0)
     pets_info  = data.get("pets_info", "")
     extra_info = data.get("extra_info", "")
+    editing_field = data.get("editing_field")
+
+    # Якщо людина змінює фото або опис ПІСЛЯ того як вже була верифікована —
+    # надсилаємо сповіщення в канал модерації про новий контент для перегляду.
+    # Профіль залишається видимим (не блокуємо людину), просто даємо вам
+    # можливість перевірити і заблокувати якщо щось не так.
+    existing_user = await get_user(message.chat.id)
+    was_already_verified = (
+        editing_field in ("description", "photos")
+        and existing_user is not None
+        and "verification_status" in existing_user.keys()
+        and existing_user["verification_status"] == "verified"
+    )
 
     await update_user_home(
         message.chat.id,
@@ -369,6 +382,12 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
     kb = InlineKeyboardBuilder()
     kb.button(text="✈️ Додати поїздку", callback_data="add_trip")
 
+    closing_line = (
+        "Ваш профіль на перегляді в модерації — оновлення вже надіслано! ✅"
+        if was_already_verified else
+        "Тепер додайте поїздку — і профіль одразу відправиться на верифікацію!"
+    )
+
     await message.answer(
         f"✅ *Профіль збережено!*\n\n"
         f"🏠 {data['city']}, {data['country']}\n"
@@ -376,10 +395,71 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
         f"📸 Фото: {photos_count} шт.\n"
         f"{pets_line}"
         f"{extra_line}\n"
-        "Тепер додайте поїздку — і профіль одразу відправиться на верифікацію!",
+        f"{closing_line}",
         parse_mode="Markdown",
         reply_markup=kb.as_markup(),
     )
+
+    # Сповіщаємо канал модерації, якщо вже верифікований профіль змінив фото/опис
+    if was_already_verified and bot:
+        await _notify_profile_changed(bot, message.chat.id, editing_field)
+
+
+async def _notify_profile_changed(bot, telegram_id: int, changed_field: str):
+    from aiogram.types import InputMediaPhoto
+
+    user = await get_user(telegram_id)
+    if not user:
+        return
+
+    field_label = "опис житла" if changed_field == "description" else "фото житла"
+    photos = [p for p in (user["home_photos"] or "").split(",") if p]
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="👍 Все гаразд", callback_data="changes_ok_" + str(telegram_id))
+    kb.button(text="❌ Відхилити зміни", callback_data="verify_reject_" + str(telegram_id))
+    kb.button(text="🚫 Заблокувати назавжди", callback_data="verify_ban_" + str(telegram_id))
+    kb.adjust(2, 1)
+
+    caption = (
+        f"✏️ *Користувач змінив {field_label}*\n\n"
+        f"👤 {user['name']}\n"
+        f"🏠 {user['home_city']}, {user['home_country']}\n"
+        f"📝 {user['home_description']}\n\n"
+        f"🆔 {telegram_id}"
+    )
+
+    targets = [VERIFICATION_CHANNEL_ID] if VERIFICATION_CHANNEL_ID else ADMIN_IDS
+
+    for target_id in targets:
+        try:
+            if len(photos) > 1:
+                media = [InputMediaPhoto(media=p) for p in photos[:10]]
+                media[-1].caption = caption
+                media[-1].parse_mode = "Markdown"
+                await bot.send_media_group(target_id, media=media)
+                await bot.send_message(target_id, "👆 Перевірте зміни:", reply_markup=kb.as_markup())
+            elif len(photos) == 1:
+                await bot.send_photo(
+                    target_id, photo=photos[0], caption=caption,
+                    parse_mode="Markdown", reply_markup=kb.as_markup(),
+                )
+            else:
+                await bot.send_message(
+                    target_id, caption,
+                    parse_mode="Markdown", reply_markup=kb.as_markup(),
+                )
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("changes_ok_"))
+async def changes_ok(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("👍 Прийнято")
 
 
 async def _notify_admins_new_user(bot, telegram_id: int, trip: dict = None):
