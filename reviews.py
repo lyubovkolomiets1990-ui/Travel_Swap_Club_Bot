@@ -216,12 +216,22 @@ async def _finish_review(message: Message, state: FSMContext, bot, comment: str,
         parse_mode="Markdown",
     )
 
-    # Перевіряємо чи обидва залишили — якщо так, відкриваємо оцінки
+    # Перевіряємо чи обидва залишили — якщо так, відкриваємо оцінки обом
     all_reviews = await get_both_reviews(match_id)
     if len(all_reviews) >= 2:
+        # Будуємо карту: user_db_id -> telegram_id для обох учасників матчу
+        trips = await get_active_trips()
+        trip_map_by_user = {t["user_id"]: t["telegram_id"] for t in trips}
+
         for rev in all_reviews:
-            target_tg = partner_tg_id if rev["reviewer_id"] == reviewer_db_id else (tg_id or message.chat.id)
-            rating = await get_user_rating(rev["reviewee_id"])
+            # rev["reviewee_id"] — про кого цей відгук, саме ця людина має
+            # отримати свій підсумковий рейтинг
+            reviewee_user_id = rev["reviewee_id"]
+            target_tg = trip_map_by_user.get(reviewee_user_id)
+            if not target_tg:
+                continue
+
+            rating = await get_user_rating(reviewee_user_id)
             try:
                 await bot.send_message(
                     target_tg,
