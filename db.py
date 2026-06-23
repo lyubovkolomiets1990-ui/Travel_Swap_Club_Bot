@@ -142,6 +142,85 @@ async def create_trip(user_id: int, dest_city: str, dest_country: str,
         return cursor.lastrowid
 
 
+async def update_trip_dates(trip_id: int, date_from: str, date_to: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE trips SET date_from=?, date_to=? WHERE id=?",
+            (date_from, date_to, trip_id),
+        )
+        await db.commit()
+
+
+async def mark_trip_completed(trip_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE trips SET status='completed' WHERE id=?", (trip_id,)
+        )
+        await db.commit()
+
+
+async def get_trip_by_id(trip_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM trips WHERE id=?", (trip_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+
+async def mark_expired_trips_completed() -> int:
+    """Позначає 'completed' усі активні поїздки де date_to вже минула.
+    Поїздки з гнучкими датами ('гнучко') не торкаємось — вони не мають дедлайну."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, date_to FROM trips WHERE status='active' AND date_to != 'гнучко'"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        from datetime import datetime
+        today = datetime.now().date()
+        fmt = "%d.%m.%Y"
+        expired_ids = []
+        for row in rows:
+            try:
+                date_to = datetime.strptime(row["date_to"], fmt).date()
+                if date_to < today:
+                    expired_ids.append(row["id"])
+            except ValueError:
+                continue
+
+        for trip_id in expired_ids:
+            await db.execute("UPDATE trips SET status='completed' WHERE id=?", (trip_id,))
+        await db.commit()
+        return len(expired_ids)
+
+
+async def get_trips_ending_tomorrow() -> list:
+    """Активні поїздки де date_to — це завтра (для попередження за 1 день)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT t.*, u.telegram_id, u.name
+               FROM trips t JOIN users u ON t.user_id = u.id
+               WHERE t.status='active' AND t.date_to != 'гнучко'"""
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        from datetime import datetime, timedelta
+        tomorrow = (datetime.now() + timedelta(days=1)).date()
+        fmt = "%d.%m.%Y"
+        result = []
+        for row in rows:
+            try:
+                date_to = datetime.strptime(row["date_to"], fmt).date()
+                if date_to == tomorrow:
+                    result.append(row)
+            except ValueError:
+                continue
+        return result
+
+
 async def get_active_trips():
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
