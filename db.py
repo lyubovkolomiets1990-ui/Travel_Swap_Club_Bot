@@ -81,6 +81,7 @@ async def init_db():
             ("home_photos", "''"),
             ("has_pets", "0"),
             ("pets_info", "''"),
+            ("extra_info", "''"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT {default}")
@@ -114,13 +115,14 @@ async def create_user(telegram_id: int, name: str):
 
 async def update_user_home(telegram_id: int, city: str, country: str,
                            description: str, photos: str = "",
-                           has_pets: int = 0, pets_info: str = ""):
+                           has_pets: int = 0, pets_info: str = "",
+                           extra_info: str = ""):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """UPDATE users SET home_city=?, home_country=?, home_description=?,
-               home_photos=?, has_pets=?, pets_info=?
+               home_photos=?, has_pets=?, pets_info=?, extra_info=?
                WHERE telegram_id=?""",
-            (city, country, description, photos, has_pets, pets_info, telegram_id),
+            (city, country, description, photos, has_pets, pets_info, extra_info, telegram_id),
         )
         await db.commit()
 
@@ -145,7 +147,8 @@ async def get_active_trips():
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT t.*, u.telegram_id, u.name, u.home_city, u.home_country,
-                      u.home_description, u.home_photos, u.has_pets, u.pets_info
+                      u.home_description, u.home_photos, u.has_pets, u.pets_info,
+                      u.extra_info
                FROM trips t JOIN users u ON t.user_id = u.id
                WHERE t.status = 'active'"""
         ) as cursor:
