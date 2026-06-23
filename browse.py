@@ -30,10 +30,6 @@ class AskQuestion(StatesGroup):
     waiting_question = State()
 
 
-class FindCity(StatesGroup):
-    waiting_city_name = State()
-
-
 class FindHomeCity(StatesGroup):
     waiting_city_name = State()
 
@@ -173,40 +169,39 @@ async def cmd_top(message: Message):
     await show_browse(message, message.from_user.id, 0, sort_by_rating=True)
 
 
-@router.message(Command("find"))
-async def cmd_find(message: Message, state: FSMContext):
-    # Підтримка "/find Барселона" в одному повідомленні
-    parts = message.text.split(maxsplit=1)
-    if len(parts) > 1:
-        city = parts[1].strip()
-        await message.answer("🔍 Шукаю мандрівників, які їдуть у «" + city + "»...")
-        await show_browse(message, message.from_user.id, 0, filter_city=city)
+@router.message(Command("find_to_me"))
+async def cmd_find_to_me(message: Message):
+    me = await get_user(message.from_user.id)
+    if not me or not me["home_city"]:
+        await message.answer(
+            "😔 Спочатку вкажіть своє місто проживання в профілі — "
+            "через «🏠 Змінити профіль»."
+        )
         return
+    my_city = me["home_city"]
     await message.answer(
-        "🌍 *В яке місто ви хочете поїхати?*\n\n"
-        "_Напишіть назву міста, наприклад: Барселона_",
+        "🔍 Шукаю, хто хоче приїхати у *" + my_city + "*...",
         parse_mode="Markdown",
     )
-    await state.set_state(FindCity.waiting_city_name)
+    await show_browse(message, message.from_user.id, 0, filter_city=my_city)
 
 
-@router.message(FindCity.waiting_city_name)
-async def find_city_input(message: Message, state: FSMContext):
-    city = message.text.strip()
-    await state.clear()
-    await message.answer("🔍 Шукаю мандрівників, які їдуть у «" + city + "»...")
-    await show_browse(message, message.from_user.id, 0, filter_city=city)
-
-
-@router.callback_query(F.data == "browse_find")
-async def browse_find(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "🌍 *В яке місто ви хочете поїхати?*\n\n"
-        "_Напишіть назву міста, наприклад: Барселона_",
-        parse_mode="Markdown",
-    )
-    await state.set_state(FindCity.waiting_city_name)
+@router.callback_query(F.data == "browse_find_to_me")
+async def browse_find_to_me(callback: CallbackQuery):
+    me = await get_user(callback.from_user.id)
     await callback.answer()
+    if not me or not me["home_city"]:
+        await callback.message.answer(
+            "😔 Спочатку вкажіть своє місто проживання в профілі — "
+            "через «🏠 Змінити профіль»."
+        )
+        return
+    my_city = me["home_city"]
+    await callback.message.answer(
+        "🔍 Шукаю, хто хоче приїхати у *" + my_city + "*...",
+        parse_mode="Markdown",
+    )
+    await show_browse(callback.message, callback.from_user.id, 0, filter_city=my_city)
 
 
 @router.message(Command("find_home"))
