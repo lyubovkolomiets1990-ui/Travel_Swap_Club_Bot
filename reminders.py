@@ -97,17 +97,23 @@ async def remind_pending_reviews(bot: Bot):
 
 
 async def remind_inactive_matches(bot: Bot):
-    """Нагадати якщо матч більше 7 днів без відповіді"""
+    """Нагадати якщо матч більше 7 днів без відповіді — лише ОДИН раз на матч,
+    незалежно від того скільки разів бот перезапускався."""
     matches = await db.get_pending_matches()
     today = datetime.now()
     fmt = "%Y-%m-%d %H:%M:%S"
 
     for match in matches:
         try:
+            # Якщо нагадування вже надсилалось для цього матчу — пропускаємо
+            already_sent = match["reminder_sent"] if "reminder_sent" in match.keys() else 0
+            if already_sent:
+                continue
+
             created = datetime.strptime(match["created_at"][:19], fmt)
             days_waiting = (today - created).days
 
-            if days_waiting == 7:
+            if days_waiting >= 7:
                 # Повідомляємо обох учасників
                 trips = await db.get_active_trips()
                 trip_map = {t["id"]: t for t in trips}
@@ -130,5 +136,8 @@ async def remind_inactive_matches(bot: Bot):
                             )
                         except Exception:
                             pass
+
+                # Позначаємо що нагадування вже надіслано — більше не повторюватиметься
+                await db.mark_reminder_sent(match["id"])
         except Exception:
             pass
