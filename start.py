@@ -559,6 +559,22 @@ async def cmd_rating(message: Message):
     await message.answer("Ваш рейтинг хоста:", reply_markup=kb.as_markup())
 
 
+@router.message(Command("edit_profile"))
+async def cmd_edit_profile(message: Message):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🌍 Місто і країну",   callback_data="edit_location")
+    kb.button(text="📝 Опис житла",       callback_data="edit_description")
+    kb.button(text="📸 Фото",             callback_data="edit_photos")
+    kb.button(text="🐾 Тварини",          callback_data="edit_pets")
+    kb.button(text="ℹ️ Додаткову інфо",   callback_data="edit_extra")
+    kb.adjust(1)
+    await message.answer(
+        "✏️ *Що бажаєте змінити?*",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+
+
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
@@ -569,6 +585,7 @@ async def cmd_help(message: Message):
         "4️⃣ /trip — додати свою поїздку\n"
         "5️⃣ /calendar — вказати коли житло доступне\n"
         "6️⃣ Після обміну залиште відгук ⭐️\n\n"
+        "✏️ /edit\\_profile — змінити опис, фото чи місто\n"
         "🗑 /delete\\_profile — видалити профіль повністю\n\n"
         "❓ Питання? Пишіть @your\\_support",
         parse_mode="Markdown",
