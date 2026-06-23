@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timedelta
 
 from aiogram import Bot
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
 
@@ -25,10 +26,83 @@ async def run_reminders(bot: Bot):
 
 async def check_all(bot: Bot):
     logger.info("🔔 Перевірка нагадувань...")
+    await remind_pending_verifications(bot)
+    await remind_trip_ending_tomorrow(bot)
+    await archive_expired_trips()
     await remind_upcoming_trips(bot)
     await remind_pending_reviews(bot)
     await remind_inactive_matches(bot)
     logger.info("✅ Нагадування перевірено")
+
+
+async def remind_pending_verifications(bot: Bot):
+    """Нагадує адміну/в канал верифікації, якщо є профілі що чекають довше доби —
+    щоб жодного нового користувача не загубити через забудькуватість."""
+    from config import ADMIN_IDS, VERIFICATION_CHANNEL_ID
+
+    pending = await db.get_pending_verifications()
+    if not pending:
+        return
+
+    old_enough = []
+    today = datetime.now()
+    for user in pending:
+        try:
+            registered = datetime.strptime(user["registered_at"][:19], "%Y-%m-%d %H:%M:%S")
+            if (today - registered).total_seconds() >= 24 * 3600:
+                old_enough.append(user)
+        except Exception:
+            continue
+
+    if not old_enough:
+        return
+
+    targets = [VERIFICATION_CHANNEL_ID] if VERIFICATION_CHANNEL_ID else ADMIN_IDS
+    names = ", ".join(u["name"] or str(u["telegram_id"]) for u in old_enough)
+
+    for target_id in targets:
+        try:
+            await bot.send_message(
+                target_id,
+                f"⏰ *Нагадування про верифікацію*\n\n"
+                f"{len(old_enough)} профіл(ів) чекають верифікації понад добу: "
+                f"{names}\n\n"
+                "Напишіть /pending щоб переглянути і вирішити.",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
+
+
+async def remind_trip_ending_tomorrow(bot: Bot):
+    """За 1 день до завершення поїздки — питаємо чи дати ще актуальні,
+    бо завтра поїздка автоматично стане неактивною і зникне з пошуку."""
+    trips = await db.get_trips_ending_tomorrow()
+    for trip in trips:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Все ще актуально", callback_data="trip_keep_" + str(trip["id"]))
+        kb.button(text="📅 Змінити дати", callback_data="trip_edit_dates_" + str(trip["id"]))
+        kb.adjust(1)
+        try:
+            await bot.send_message(
+                trip["telegram_id"],
+                "📅 *Ваша поїздка завершується завтра!*\n\n"
+                "Завтра ця поїздка автоматично стане неактивною і зникне "
+                "з пошуку мандрівників.\n\n"
+                "Якщо дати вже не актуальні — оновіть їх, щоб не загубити "
+                "видимість у спільноті.",
+                parse_mode="Markdown",
+                reply_markup=kb.as_markup(),
+            )
+        except Exception:
+            pass
+
+
+async def archive_expired_trips():
+    """Щодня ховаємо з пошуку поїздки, у яких дата завершення вже минула."""
+    count = await db.mark_expired_trips_completed()
+    if count:
+        logger.info(f"📦 Архівовано {count} поїздок з минулими датами")
 
 
 async def remind_upcoming_trips(bot: Bot):
