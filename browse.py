@@ -21,18 +21,25 @@ class FindCity(StatesGroup):
     waiting_city_name = State()
 
 
+class FindHomeCity(StatesGroup):
+    waiting_city_name = State()
+
+
 
 async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
-                           sort_by_rating: bool = False, filter_city: str = None) -> list:
+                           sort_by_rating: bool = False, filter_city: str = None,
+                           filter_home_city: str = None) -> list:
     """Показуємо тільки повні профілі — є місто, опис і фото.
     skip_viewed=True приховує тих, кого вже лайкнули/скіпнули раніше.
     sort_by_rating=True сортує від найвищого рейтингу до найнижчого.
-    filter_city — показує тільки тих, хто їде саме в це місто (пошук без врахування регістру)."""
+    filter_city — показує тільки тих, хто ЇДЕ саме в це місто.
+    filter_home_city — показує тільки тих, хто ЖИВЕ саме в цьому місті."""
     all_trips = await get_active_trips()
     viewed_ids = await get_viewed_ids(my_telegram_id) if skip_viewed else set()
     seen_users = set()
     cards = []
     city_query = filter_city.strip().lower() if filter_city else None
+    home_city_query = filter_home_city.strip().lower() if filter_home_city else None
     for trip in all_trips:
         tg_id = trip["telegram_id"]
         if tg_id == my_telegram_id:
@@ -50,6 +57,10 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
         if city_query:
             dest_city = (trip["destination_city"] or "").strip().lower()
             if city_query not in dest_city:
+                continue
+        if home_city_query:
+            home_city = (trip["home_city"] or "").strip().lower()
+            if home_city_query not in home_city:
                 continue
         seen_users.add(tg_id)
         cards.append(dict(trip))
@@ -185,6 +196,41 @@ async def browse_find(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.message(Command("find_home"))
+async def cmd_find_home(message: Message, state: FSMContext):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) > 1:
+        city = parts[1].strip()
+        await message.answer("🔍 Шукаю, хто живе в «" + city + "»...")
+        await show_browse(message, message.from_user.id, 0, filter_home_city=city)
+        return
+    await message.answer(
+        "🏠 *В яке місто ви хочете поїхати?*\n\n"
+        "_Напишіть назву міста — покажу тих, хто там живе: наприклад, Пафос_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(FindHomeCity.waiting_city_name)
+
+
+@router.message(FindHomeCity.waiting_city_name)
+async def find_home_city_input(message: Message, state: FSMContext):
+    city = message.text.strip()
+    await state.clear()
+    await message.answer("🔍 Шукаю, хто живе в «" + city + "»...")
+    await show_browse(message, message.from_user.id, 0, filter_home_city=city)
+
+
+@router.callback_query(F.data == "browse_find_home")
+async def browse_find_home(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "🏠 *В яке місто ви хочете поїхати?*\n\n"
+        "_Напишіть назву міста — покажу тих, хто там живе: наприклад, Пафос_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(FindHomeCity.waiting_city_name)
+    await callback.answer()
+
+
 @router.callback_query(F.data == "browse_top")
 async def browse_top(callback: CallbackQuery):
     await callback.message.answer("⭐️ Шукаю мандрівників з найвищим рейтингом...")
@@ -215,11 +261,19 @@ async def browse_reset(callback: CallbackQuery):
 
 
 async def show_browse(message: Message, my_tg_id: int, idx: int, sort_by_rating: bool = False,
-                       filter_city: str = None):
-    cards = await get_browse_cards(my_tg_id, sort_by_rating=sort_by_rating, filter_city=filter_city)
+                       filter_city: str = None, filter_home_city: str = None):
+    cards = await get_browse_cards(my_tg_id, sort_by_rating=sort_by_rating,
+                                    filter_city=filter_city, filter_home_city=filter_home_city)
     if not cards:
         kb = InlineKeyboardBuilder()
-        if filter_city:
+        if filter_home_city:
+            kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
+            await message.answer(
+                "😔 Поки що ніхто не живе в «" + filter_home_city + "».\n\n"
+                "Спробуйте інше місто або перегляньте всіх мандрівників:",
+                reply_markup=kb.as_markup(),
+            )
+        elif filter_city:
             kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
             await message.answer(
                 "😔 Поки що ніхто не їде в «" + filter_city + "».\n\n"
@@ -272,6 +326,25 @@ async def browse_like(callback: CallbackQuery, bot):
     owner_tg = int(parts[2])
     idx = int(parts[3])
     my_tg_id = callback.from_user.id
+
+    # Перевіряємо чи в людини є власна поїздка — без неї матч буде неповноцінним
+    my_trips_check = await get_user_trips(my_tg_id)
+    if not my_trips_check:
+        kb_redirect = InlineKeyboardBuilder()
+        kb_redirect.button(text="✈️ Додати поїздку", callback_data="add_trip")
+        await callback.answer(
+            "Щоб лайкати — додайте спочатку свою поїздку 👇",
+            show_alert=True,
+        )
+        await callback.message.answer(
+            "✈️ *Перш ніж лайкати — додайте свою поїздку!*\n\n"
+            "Без поїздки матч не буде повноцінним: ви не зможете "
+            "залишити відгук після обміну.\n\n"
+            "Це займає 1 хвилину — куди їдете і коли 👇",
+            parse_mode="Markdown",
+            reply_markup=kb_redirect.as_markup(),
+        )
+        return
 
     me = await get_user(my_tg_id)
     them = await get_user(owner_tg)
