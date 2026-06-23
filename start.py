@@ -5,7 +5,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from db import get_user, create_user, update_user_home, delete_user_profile
+from db import get_user, create_user, update_user_home, delete_user_profile, get_all_known_cities
+import difflib
 
 router = Router()
 
@@ -15,11 +16,13 @@ class OnboardingFSM(StatesGroup):
 
 
 class RegisterHome(StatesGroup):
-    waiting_city_country = State()
-    waiting_description  = State()
-    waiting_photos       = State()
-    waiting_pets         = State()
-    waiting_pets_info    = State()
+    waiting_country       = State()
+    waiting_city          = State()
+    waiting_city_confirm  = State()
+    waiting_description   = State()
+    waiting_photos        = State()
+    waiting_pets          = State()
+    waiting_pets_info     = State()
 
 
 def main_menu_kb():
@@ -147,24 +150,57 @@ async def agree_and_start(callback: CallbackQuery, state: FSMContext):
         "Це платформа для обміну житлом між мандрівниками 🌍\n\n"
         "Наприклад: ви їдете до Барселони — хтось із Барселони приїде до вас.\n\n"
         "Давайте почнемо 👇\n\n"
-        "📍 *Де ви зараз живете?*\n"
-        "_Введіть місто і країну через кому: Айя-Напа, Кіпр_",
+        "🌍 *В якій країні ви живете?*\n"
+        "_Наприклад: Кіпр_",
         parse_mode="Markdown",
     )
-    await state.set_state(RegisterHome.waiting_city_country)
+    await state.set_state(RegisterHome.waiting_country)
 
 
-# ── Крок 1: Місто і країна ────────────────────────────────────────────────────
+# ── Крок 1: Країна ────────────────────────────────────────────────────────────
 
-@router.message(RegisterHome.waiting_city_country)
-async def home_city_country(message: Message, state: FSMContext):
-    text = message.text.strip()
-    if "," in text:
-        city, country = [x.strip() for x in text.split(",", 1)]
-    else:
-        city = text
-        country = text
-    await state.update_data(city=city, country=country)
+@router.message(RegisterHome.waiting_country)
+async def home_country(message: Message, state: FSMContext):
+    await state.update_data(country=message.text.strip())
+    await message.answer(
+        "🏙 *А в якому місті?*\n"
+        "_Наприклад: Пафос_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(RegisterHome.waiting_city)
+
+
+# ── Крок 2: Місто ──────────────────────────────────────────────────────────────
+
+@router.message(RegisterHome.waiting_city)
+async def home_city(message: Message, state: FSMContext):
+    typed_city = message.text.strip()
+
+    known_cities = await get_all_known_cities()
+    matches = difflib.get_close_matches(typed_city, known_cities, n=1, cutoff=0.72)
+
+    if matches and matches[0].lower() != typed_city.lower():
+        suggested = matches[0]
+        await state.update_data(typed_city=typed_city, suggested_city=suggested)
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Так, це " + suggested, callback_data="city_use_suggested")
+        kb.button(text="Ні, залишити «" + typed_city + "»", callback_data="city_keep_typed")
+        kb.adjust(1)
+        await message.answer(
+            "🏙 Ви ввели: *" + typed_city + "*\n\n"
+            "У базі вже є схоже місто: *" + suggested + "*\n"
+            "Це воно ж, просто написано трохи інакше?",
+            parse_mode="Markdown",
+            reply_markup=kb.as_markup(),
+        )
+        await state.set_state(RegisterHome.waiting_city_confirm)
+        return
+
+    await _finish_city_step(message, state, typed_city)
+
+
+async def _finish_city_step(message: Message, state: FSMContext, city: str):
+    await state.update_data(city=city)
     await message.answer(
         "📝 *Опишіть своє житло:*\n"
         "Скільки кімнат, що поруч, особливості?\n\n"
@@ -172,6 +208,22 @@ async def home_city_country(message: Message, state: FSMContext):
         parse_mode="Markdown",
     )
     await state.set_state(RegisterHome.waiting_description)
+
+
+@router.callback_query(RegisterHome.waiting_city_confirm, F.data == "city_use_suggested")
+async def city_use_suggested(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _finish_city_step(callback.message, state, data["suggested_city"])
+
+
+@router.callback_query(RegisterHome.waiting_city_confirm, F.data == "city_keep_typed")
+async def city_keep_typed(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _finish_city_step(callback.message, state, data["typed_city"])
 
 
 # ── Крок 2: Опис ──────────────────────────────────────────────────────────────
@@ -380,8 +432,8 @@ async def cancel_delete_profile(callback: CallbackQuery):
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
-        "📍 *Де ви живете?*\nВведіть місто і країну через кому:\n_Наприклад: Айя-Напа, Кіпр_",
+        "🌍 *В якій країні ви живете?*\n_Наприклад: Кіпр_",
         parse_mode="Markdown",
     )
-    await state.set_state(RegisterHome.waiting_city_country)
+    await state.set_state(RegisterHome.waiting_country)
     await callback.answer()
