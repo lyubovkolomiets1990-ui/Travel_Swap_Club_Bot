@@ -430,3 +430,53 @@ async def get_viewed_ids(viewer_tg_id: int) -> set:
         ) as cursor:
             rows = await cursor.fetchall()
             return {r[0] for r in rows}
+
+
+async def delete_user_profile(telegram_id: int):
+    """Повністю видаляє користувача і всі пов'язані дані: поїздки, лайки, перегляди, відгуки."""
+    user = await get_user(telegram_id)
+    if not user:
+        return False
+    user_db_id = user["id"]
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Видаляємо поїздки і пов'язані матчі
+        cursor = await db.execute("SELECT id FROM trips WHERE user_id=?", (user_db_id,))
+        trip_ids = [row[0] for row in await cursor.fetchall()]
+
+        for trip_id in trip_ids:
+            await db.execute(
+                "DELETE FROM matches WHERE trip_id_1=? OR trip_id_2=?",
+                (trip_id, trip_id),
+            )
+        await db.execute("DELETE FROM trips WHERE user_id=?", (user_db_id,))
+
+        # Видаляємо лайки де користувач учасник (за telegram_id)
+        await db.execute(
+            "DELETE FROM likes WHERE from_user_id=? OR to_user_id=?",
+            (user_db_id, user_db_id),
+        )
+
+        # Видаляємо історію переглядів browse
+        await db.execute(
+            "DELETE FROM browse_views WHERE viewer_telegram_id=? OR viewed_telegram_id=?",
+            (telegram_id, telegram_id),
+        )
+
+        # Видаляємо заблоковані місяці календаря
+        await db.execute(
+            "DELETE FROM blocked_months WHERE telegram_id=?",
+            (telegram_id,),
+        )
+
+        # Видаляємо відгуки де користувач учасник
+        await db.execute(
+            "DELETE FROM reviews WHERE reviewer_id=? OR reviewee_id=?",
+            (user_db_id, user_db_id),
+        )
+
+        # Видаляємо сам профіль
+        await db.execute("DELETE FROM users WHERE telegram_id=?", (telegram_id,))
+        await db.commit()
+
+    return True
