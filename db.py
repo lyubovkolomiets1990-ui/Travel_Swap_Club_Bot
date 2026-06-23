@@ -86,6 +86,10 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT {default}")
             except Exception:
                 pass
+        try:
+            await db.execute("ALTER TABLE matches ADD COLUMN reminder_sent INTEGER DEFAULT 0")
+        except Exception:
+            pass
         await db.commit()
     print("✅ База даних ініціалізована")
 
@@ -372,6 +376,14 @@ async def get_pending_matches() -> list:
             "SELECT * FROM matches WHERE status='pending' ORDER BY created_at",
         ) as cursor:
             return await cursor.fetchall()
+
+
+async def mark_reminder_sent(match_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE matches SET reminder_sent=1 WHERE id=?", (match_id,)
+        )
+        await db.commit()
 
 
 async def get_all_users_with_home() -> list:
