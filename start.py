@@ -20,6 +20,14 @@ class RejectReason(StatesGroup):
     waiting_reason = State()
 
 
+class QuickEdit(StatesGroup):
+    waiting_description = State()
+    waiting_photos       = State()
+    waiting_pets         = State()
+    waiting_pets_info    = State()
+    waiting_extra        = State()
+
+
 class RegisterHome(StatesGroup):
     waiting_country       = State()
     waiting_city          = State()
@@ -978,8 +986,14 @@ async def edit_description_start(callback: CallbackQuery, state: FSMContext):
         "_Наприклад: будинок, 5 хв до моря, машина включена, паркінг_",
         parse_mode="Markdown",
     )
-    await state.set_state(RegisterHome.waiting_description)
+    await state.set_state(QuickEdit.waiting_description)
     await callback.answer()
+
+
+@router.message(QuickEdit.waiting_description)
+async def quick_edit_description(message: Message, state: FSMContext, bot):
+    await state.update_data(description=message.text.strip())
+    await _save_profile(message, state, bot)
 
 
 @router.callback_query(F.data == "edit_photos")
@@ -997,10 +1011,34 @@ async def edit_photos_start(callback: CallbackQuery, state: FSMContext):
         "📸 *Надішліть нові фото житла* (до 5 штук)\n\n"
         "_Старі фото буде замінено новими_",
         parse_mode="Markdown",
-        reply_markup=_skip_kb("photos_done"),
+        reply_markup=_skip_kb("quick_photos_done"),
     )
-    await state.set_state(RegisterHome.waiting_photos)
+    await state.set_state(QuickEdit.waiting_photos)
     await callback.answer()
+
+
+@router.message(QuickEdit.waiting_photos, F.photo)
+async def quick_edit_photo(message: Message, state: FSMContext, bot):
+    data = await state.get_data()
+    photos = data.get("photos", [])
+    photos.append(message.photo[-1].file_id)
+    await state.update_data(photos=photos)
+    count = len(photos)
+    if count >= 5:
+        await message.answer("✅ 5 фото збережено!")
+        await _save_profile(message, state, bot)
+    else:
+        await message.answer(
+            f"✅ Фото {count}/5 збережено. Надішліть ще або натисніть «Готово»",
+            reply_markup=_skip_kb("quick_photos_done"),
+        )
+
+
+@router.callback_query(QuickEdit.waiting_photos, F.data == "quick_photos_done")
+async def quick_photos_done(callback: CallbackQuery, state: FSMContext, bot):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _save_profile(callback.message, state, bot)
 
 
 @router.callback_query(F.data == "edit_pets")
@@ -1013,8 +1051,43 @@ async def edit_pets_start(callback: CallbackQuery, state: FSMContext):
         extra_info=user["extra_info"] if "extra_info" in user.keys() else "",
         editing_field="pets",
     )
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Так, є тварини", callback_data="quick_pets_yes")
+    kb.button(text="❌ Ні", callback_data="quick_pets_no")
+    kb.adjust(2)
+    await callback.message.answer(
+        "🐾 *У вас є домашні тварини?*",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+    await state.set_state(QuickEdit.waiting_pets)
     await callback.answer()
-    await _ask_pets(callback.message, state)
+
+
+@router.callback_query(QuickEdit.waiting_pets, F.data == "quick_pets_yes")
+async def quick_pets_yes(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(has_pets=1)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "🐶 *Розкажіть про тварин:*\n\n_Наприклад: 1 кіт, дуже лагідний_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(QuickEdit.waiting_pets_info)
+    await callback.answer()
+
+
+@router.callback_query(QuickEdit.waiting_pets, F.data == "quick_pets_no")
+async def quick_pets_no(callback: CallbackQuery, state: FSMContext, bot):
+    await state.update_data(has_pets=0, pets_info="")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _save_profile(callback.message, state, bot)
+
+
+@router.message(QuickEdit.waiting_pets_info)
+async def quick_pets_info(message: Message, state: FSMContext, bot):
+    await state.update_data(pets_info=message.text.strip())
+    await _save_profile(message, state, bot)
 
 
 @router.callback_query(F.data == "edit_extra")
@@ -1027,5 +1100,27 @@ async def edit_extra_start(callback: CallbackQuery, state: FSMContext):
         has_pets=user["has_pets"], pets_info=user["pets_info"],
         editing_field="extra",
     )
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Пропустити", callback_data="quick_extra_skip")
+    await callback.message.answer(
+        "ℹ️ *Що варто знати?*\n\n"
+        "_Наприклад: машина включена в обмін, басейн, парковка_",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+    await state.set_state(QuickEdit.waiting_extra)
     await callback.answer()
-    await _ask_extra_info(callback.message, state)
+
+
+@router.message(QuickEdit.waiting_extra)
+async def quick_extra_text(message: Message, state: FSMContext, bot):
+    await state.update_data(extra_info=message.text.strip())
+    await _save_profile(message, state, bot)
+
+
+@router.callback_query(QuickEdit.waiting_extra, F.data == "quick_extra_skip")
+async def quick_extra_skip(callback: CallbackQuery, state: FSMContext, bot):
+    await state.update_data(extra_info="")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _save_profile(callback.message, state, bot)
