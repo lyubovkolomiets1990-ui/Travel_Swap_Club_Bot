@@ -16,6 +16,10 @@ class OnboardingFSM(StatesGroup):
     waiting_agreement = State()
 
 
+class RejectReason(StatesGroup):
+    waiting_reason = State()
+
+
 class RegisterHome(StatesGroup):
     waiting_country       = State()
     waiting_city          = State()
@@ -402,7 +406,8 @@ async def _notify_admins_new_user(bot, telegram_id: int, trip: dict = None):
     kb = InlineKeyboardBuilder()
     kb.button(text="✅ Верифікувати", callback_data="verify_approve_" + str(telegram_id))
     kb.button(text="❌ Відхилити", callback_data="verify_reject_" + str(telegram_id))
-    kb.adjust(2)
+    kb.button(text="🚫 Заблокувати назавжди", callback_data="verify_ban_" + str(telegram_id))
+    kb.adjust(2, 1)
 
     caption = (
         f"🆕 *Новий профіль на верифікацію*\n\n"
@@ -596,6 +601,91 @@ async def admin_cancel_delete(callback: CallbackQuery):
     await callback.answer("Скасовано")
 
 
+# ── Блокування користувачів ───────────────────────────────────────────────────
+
+@router.message(Command("ban"))
+async def cmd_ban(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 2 or not parts[1].strip().lstrip("-").isdigit():
+        await message.answer(
+            "⚙️ Використання: `/ban TELEGRAM_ID [причина]`\n\n"
+            "_Наприклад: /ban 487287005 шахрайський профіль_",
+            parse_mode="Markdown",
+        )
+        return
+
+    target_id = int(parts[1].strip())
+    reason = parts[2].strip() if len(parts) > 2 else ""
+
+    from db import ban_user
+    await ban_user(target_id, reason)
+    await delete_user_profile(target_id)
+
+    await message.answer(
+        f"🚫 Користувач {target_id} заблокований"
+        + (f" (причина: {reason})" if reason else "")
+        + ".\n\nПрофіль видалено, новий створити він не зможе."
+    )
+
+
+@router.message(Command("unban"))
+async def cmd_unban(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip().lstrip("-").isdigit():
+        await message.answer(
+            "⚙️ Використання: `/unban TELEGRAM_ID`",
+            parse_mode="Markdown",
+        )
+        return
+
+    target_id = int(parts[1].strip())
+    from db import unban_user
+    await unban_user(target_id)
+    await message.answer(
+        f"✅ Користувача {target_id} розблоковано — може знову написати /start."
+    )
+
+
+@router.message(Command("banned_list"))
+async def cmd_banned_list(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    from db import get_all_banned
+    banned = await get_all_banned()
+    if not banned:
+        await message.answer("✅ Список блокувань порожній.")
+        return
+
+    text = "🚫 *Заблоковані користувачі:*\n\n"
+    for b in banned:
+        reason_text = f" — {b['reason']}" if b["reason"] else ""
+        text += f"🆔 {b['telegram_id']}{reason_text}\n"
+    await message.answer(text, parse_mode="Markdown")
+
+
+@router.callback_query(F.data.startswith("verify_ban_"))
+async def verify_ban(callback: CallbackQuery, bot):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[2])
+    from db import ban_user
+    await ban_user(target_id, "Заблоковано через модерацію верифікації")
+    await delete_user_profile(target_id)
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("🚫 Заблоковано назавжди")
+    await callback.message.answer(f"🚫 Користувач {target_id} заблокований і видалений.")
+
+
 # ── Верифікація нових профілів ────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("verify_approve_"))
@@ -624,24 +714,81 @@ async def verify_approve(callback: CallbackQuery, bot):
 
 
 @router.callback_query(F.data.startswith("verify_reject_"))
-async def verify_reject(callback: CallbackQuery, bot):
+async def verify_reject(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Недостатньо прав", show_alert=True)
         return
 
     target_id = int(callback.data.split("_")[2])
-    from db import set_verification_status
-    await set_verification_status(target_id, "rejected")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
 
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📋 Стандартне повідомлення", callback_data="reject_standard_" + str(target_id))
+    kb.button(text="✍️ Написати свою причину", callback_data="reject_custom_" + str(target_id))
+    kb.adjust(1)
+    await callback.message.answer(
+        "Як відхилити профіль?",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("reject_standard_"))
+async def reject_standard(callback: CallbackQuery, bot):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[2])
+    await _send_rejection(
+        bot, target_id,
+        "Перевірте, чи фото та опис відповідають правилам спільноти, "
+        "і спробуйте оновити профіль через «🏠 Змінити профіль».",
+    )
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("❌ Відхилено")
+    await callback.message.answer(f"❌ Профіль {target_id} відхилено зі стандартним поясненням.")
 
+
+@router.callback_query(F.data.startswith("reject_custom_"))
+async def reject_custom_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[2])
+    await state.update_data(reject_target_id=target_id)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await callback.message.answer(
+        "✍️ *Напишіть причину відхилення*\n\n"
+        "_Наприклад: «додайте фото житла зсередини» або "
+        "«опис занадто короткий, розкажіть більше про умови обміну»_\n\n"
+        "_Це повідомлення прийде користувачу від імені модерації_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(RejectReason.waiting_reason)
+
+
+@router.message(RejectReason.waiting_reason)
+async def reject_custom_send(message: Message, state: FSMContext, bot):
+    data = await state.get_data()
+    target_id = data["reject_target_id"]
+    reason = message.text.strip()
+    await state.clear()
+
+    await _send_rejection(bot, target_id, reason)
+    await message.answer(f"❌ Профіль {target_id} відхилено з вашим поясненням.")
+
+
+async def _send_rejection(bot, target_id: int, reason_text: str):
+    from db import set_verification_status
+    await set_verification_status(target_id, "rejected")
     try:
         await bot.send_message(
             target_id,
-            "😔 *Ваш профіль не пройшов верифікацію*\n\n"
-            "Перевірте, чи фото та опис відповідають правилам спільноти, "
-            "і спробуйте оновити профіль через «🏠 Змінити профіль».\n\n"
+            f"😔 *Ваш профіль не пройшов верифікацію*\n\n"
+            f"{reason_text}\n\n"
             "Питання? Пишіть @your\\_support",
             parse_mode="Markdown",
         )
@@ -670,7 +817,8 @@ async def cmd_pending_verifications(message: Message):
         kb = InlineKeyboardBuilder()
         kb.button(text="✅ Верифікувати", callback_data="verify_approve_" + str(user["telegram_id"]))
         kb.button(text="❌ Відхилити", callback_data="verify_reject_" + str(user["telegram_id"]))
-        kb.adjust(2)
+        kb.button(text="🚫 Заблокувати назавжди", callback_data="verify_ban_" + str(user["telegram_id"]))
+        kb.adjust(2, 1)
 
         caption = (
             f"👤 {user['name']}\n"
