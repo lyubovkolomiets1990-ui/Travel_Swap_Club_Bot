@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from db import get_user, create_user, update_user_home
+from db import get_user, create_user, update_user_home, delete_user_profile
 
 router = Router()
 
@@ -92,6 +92,7 @@ async def cmd_start(message: Message, state: FSMContext):
             "Що ви можете робити в боті:\n\n"
             "🔍 *Переглянути всіх* — знаходьте цікавих мандрівників та потенційні обміни\n"
             "🏙 *Знайти місто* — шукайте людей, які подорожують у потрібне вам місто\n"
+            "🏠 *Хто живе в...* — шукайте, хто живе саме там, куди ви хочете поїхати\n"
             "⭐️ *Топ за рейтингом* — відкривайте профілі учасників з найкращими "
             "відгуками та високим рівнем довіри\n"
             "📅 *Календар подорожей* — позначайте дати, коли ваше житло доступне "
@@ -332,9 +333,48 @@ async def cmd_help(message: Message):
         "4️⃣ /trip — додати свою поїздку\n"
         "5️⃣ /calendar — вказати коли житло доступне\n"
         "6️⃣ Після обміну залиште відгук ⭐️\n\n"
+        "🗑 /delete\\_profile — видалити профіль повністю\n\n"
         "❓ Питання? Пишіть @your\\_support",
         parse_mode="Markdown",
     )
+
+
+@router.message(Command("delete_profile"))
+async def cmd_delete_profile(message: Message):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Так, видалити назавжди", callback_data="confirm_delete_profile")
+    kb.button(text="Скасувати", callback_data="cancel_delete_profile")
+    kb.adjust(1)
+    await message.answer(
+        "⚠️ *Ви впевнені, що хочете видалити профіль?*\n\n"
+        "Будуть видалені без можливості відновлення:\n"
+        "• Ваш профіль і фото житла\n"
+        "• Усі ваші поїздки\n"
+        "• Усі ваші лайки і матчі\n"
+        "• Усі ваші відгуки\n\n"
+        "Це безповоротна дія.",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "confirm_delete_profile")
+async def confirm_delete_profile(callback: CallbackQuery, state: FSMContext):
+    await delete_user_profile(callback.from_user.id)
+    await state.clear()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Профіль видалено")
+    await callback.message.answer(
+        "✅ Ваш профіль повністю видалено.\n\n"
+        "Якщо захочете повернутись — просто напишіть /start знову 🙏"
+    )
+
+
+@router.callback_query(F.data == "cancel_delete_profile")
+async def cancel_delete_profile(callback: CallbackQuery):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Скасовано")
+    await callback.message.answer("👍 Добре, профіль залишається без змін.")
 
 
 @router.callback_query(F.data == "edit_profile")
