@@ -24,7 +24,9 @@ async def set_commands(bot: Bot):
         BotCommand(command="browse",   description="🔍 Переглянути мандрівників"),
         BotCommand(command="calendar", description="📅 Календар доступності"),
         BotCommand(command="top",      description="⭐️ Топ за рейтингом"),
-        BotCommand(command="find",     description="🔎 Знайти за містом"),
+        BotCommand(command="find",     description="🔎 Куди їде хтось"),
+        BotCommand(command="find_home", description="🏠 Хто живе в місті"),
+        BotCommand(command="delete_profile", description="🗑 Видалити профіль"),
         BotCommand(command="help",   description="❓ Допомога"),
     ])
 
