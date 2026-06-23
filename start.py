@@ -6,6 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from db import get_user, create_user, update_user_home, delete_user_profile, get_all_known_cities
+from config import ADMIN_IDS
 import difflib
 
 router = Router()
@@ -460,6 +461,74 @@ async def cancel_delete_profile(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Скасовано")
     await callback.message.answer("👍 Добре, профіль залишається без змін.")
+
+
+# ── Адмінська команда: видалення чужого профілю ───────────────────────────────
+
+@router.message(Command("admin_delete"))
+async def cmd_admin_delete(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return  # ігноруємо мовчки, не показуємо що команда існує
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip().lstrip("-").isdigit():
+        await message.answer(
+            "⚙️ *Адмінська команда*\n\n"
+            "Використання: `/admin_delete TELEGRAM_ID`\n\n"
+            "_Наприклад: /admin\\_delete 487287005_",
+            parse_mode="Markdown",
+        )
+        return
+
+    target_id = int(parts[1].strip())
+    user = await get_user(target_id)
+
+    if not user:
+        await message.answer("😔 Користувача з таким telegram_id не знайдено в базі.")
+        return
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Так, видалити", callback_data="admin_confirm_delete_" + str(target_id))
+    kb.button(text="Скасувати", callback_data="admin_cancel_delete")
+    kb.adjust(1)
+    await message.answer(
+        f"⚠️ *Видалити профіль користувача?*\n\n"
+        f"👤 {user['name']}\n"
+        f"🏠 {user['home_city'] or '—'}, {user['home_country'] or '—'}\n"
+        f"🆔 {target_id}\n\n"
+        "Це видалить профіль, поїздки, лайки, відгуки — без можливості відновлення.",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin_confirm_delete_"))
+async def admin_confirm_delete(callback: CallbackQuery, bot):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+
+    target_id = int(callback.data.split("_")[3])
+    await delete_user_profile(target_id)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Профіль видалено")
+    await callback.message.answer(f"✅ Профіль користувача {target_id} видалено.")
+
+    try:
+        await bot.send_message(
+            target_id,
+            "ℹ️ Ваш профіль у Travel Swap Club було видалено адміністратором.\n\n"
+            "Якщо вважаєте це помилкою — зв'яжіться з підтримкою @your\\_support.",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "admin_cancel_delete")
+async def admin_cancel_delete(callback: CallbackQuery):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Скасовано")
 
 
 @router.callback_query(F.data == "edit_profile")
