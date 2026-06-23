@@ -4,6 +4,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import difflib
 
 from db import (get_user, get_active_trips, get_user_trips,
                 add_like, get_liked_users, remove_like,
@@ -11,6 +12,18 @@ from db import (get_user, get_active_trips, get_user_trips,
                 mark_viewed, get_viewed_ids, get_user_rating)
 
 router = Router()
+
+
+def fuzzy_city_match(query: str, candidate: str) -> bool:
+    """Збіг або точний підрядок, або схожість 72%+ (різні варіанти написання)"""
+    query = query.strip().lower()
+    candidate = candidate.strip().lower()
+    if not query or not candidate:
+        return False
+    if query in candidate:
+        return True
+    ratio = difflib.SequenceMatcher(None, query, candidate).ratio()
+    return ratio >= 0.72
 
 
 class AskQuestion(StatesGroup):
@@ -56,11 +69,11 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
             continue
         if city_query:
             dest_city = (trip["destination_city"] or "").strip().lower()
-            if city_query not in dest_city:
+            if not fuzzy_city_match(city_query, dest_city):
                 continue
         if home_city_query:
             home_city = (trip["home_city"] or "").strip().lower()
-            if home_city_query not in home_city:
+            if not fuzzy_city_match(home_city_query, home_city):
                 continue
         seen_users.add(tg_id)
         cards.append(dict(trip))
