@@ -26,6 +26,7 @@ async def set_commands(bot: Bot):
         BotCommand(command="top",      description="⭐️ Топ за рейтингом"),
         BotCommand(command="find_home", description="🏠 Куди я хочу поїхати"),
         BotCommand(command="find_to_me", description="📥 Хто їде до мене"),
+        BotCommand(command="edit_profile", description="✏️ Змінити профіль"),
         BotCommand(command="delete_profile", description="🗑 Видалити профіль"),
         BotCommand(command="help",   description="❓ Допомога"),
     ])
