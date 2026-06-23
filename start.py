@@ -409,15 +409,26 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
     )
 
     # Сповіщаємо канал модерації, якщо вже верифікований профіль змінив фото/опис
+    import logging
+    logging.getLogger("verification").info(
+        f"📋 _save_profile: editing_field={editing_field}, "
+        f"was_already_verified={was_already_verified}, bot_present={bot is not None}"
+    )
+
     if was_already_verified and bot:
         await _notify_profile_changed(bot, message.chat.id, editing_field)
 
 
 async def _notify_profile_changed(bot, telegram_id: int, changed_field: str):
     from aiogram.types import InputMediaPhoto
+    import logging
+    logger = logging.getLogger("verification")
+
+    logger.info(f"🔔 _notify_profile_changed called: telegram_id={telegram_id}, field={changed_field}")
 
     user = await get_user(telegram_id)
     if not user:
+        logger.warning(f"⚠️ User {telegram_id} not found, skipping notification")
         return
 
     field_label = "опис житла" if changed_field == "description" else "фото житла"
@@ -438,6 +449,7 @@ async def _notify_profile_changed(bot, telegram_id: int, changed_field: str):
     )
 
     targets = [VERIFICATION_CHANNEL_ID] if VERIFICATION_CHANNEL_ID else ADMIN_IDS
+    logger.info(f"🎯 Targets for notification: {targets}, photos count: {len(photos)}")
 
     for target_id in targets:
         try:
@@ -457,7 +469,9 @@ async def _notify_profile_changed(bot, telegram_id: int, changed_field: str):
                     target_id, caption,
                     parse_mode="Markdown", reply_markup=kb.as_markup(),
                 )
-        except Exception:
+            logger.info(f"✅ Notification sent successfully to {target_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send notification to {target_id}: {e}")
             pass
 
 
