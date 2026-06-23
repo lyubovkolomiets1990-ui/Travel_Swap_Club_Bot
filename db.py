@@ -492,3 +492,16 @@ async def delete_user_profile(telegram_id: int):
         await db.commit()
 
     return True
+
+
+async def get_all_known_cities() -> list:
+    """Всі унікальні міста (домашні і призначення) для нечіткого пошуку схожості"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cities = set()
+        async with db.execute("SELECT DISTINCT home_city FROM users WHERE home_city IS NOT NULL AND home_city != ''") as cursor:
+            for row in await cursor.fetchall():
+                cities.add(row[0])
+        async with db.execute("SELECT DISTINCT destination_city FROM trips WHERE destination_city IS NOT NULL AND destination_city != ''") as cursor:
+            for row in await cursor.fetchall():
+                cities.add(row[0])
+        return list(cities)
