@@ -5,7 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import re
 
-from db import get_user, create_trip, get_user_trips
+from db import get_user, create_trip, get_user_trips, update_trip_dates, get_trip_by_id, mark_trip_completed
 from matcher import find_matches, save_match, TRAVELER_TYPES, LOOKING_FOR_LABELS
 
 router = Router()
@@ -21,6 +21,11 @@ class AddTrip(StatesGroup):
     waiting_guests       = State()
     waiting_my_type      = State()   # хто я (тип мандрівника)
     waiting_looking_for  = State()   # кого шукаю у своє житло
+
+
+class EditTripDates(StatesGroup):
+    waiting_new_date_from = State()
+    waiting_new_date_to   = State()
 
 
 # ── Клавіатури ───────────────────────────────────────────────────────────────
@@ -280,6 +285,79 @@ async def my_trips(callback: CallbackQuery):
         text += f"{i}. {format_trip(trip)}\n\n"
 
     kb = InlineKeyboardBuilder()
+    for i, trip in enumerate(trips, 1):
+        kb.button(
+            text=f"📅 Змінити дати #{i}",
+            callback_data="trip_edit_dates_" + str(trip["id"]),
+        )
+        kb.button(
+            text=f"❌ Завершити #{i}",
+            callback_data="trip_cancel_" + str(trip["id"]),
+        )
     kb.button(text="✈️ Додати ще поїздку", callback_data="add_trip")
+    kb.adjust(2)
     await callback.message.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("trip_cancel_"))
+async def trip_cancel(callback: CallbackQuery):
+    trip_id = int(callback.data.split("_")[2])
+    await mark_trip_completed(trip_id)
+    await callback.answer("Поїздку завершено")
+    await callback.message.answer(
+        "✅ Поїздку позначено як завершену — вона більше не "
+        "показується в пошуку.\n\n"
+        "Додайте нову, коли будете готові до наступної подорожі! ✈️"
+    )
+
+
+# ── Реагування на нагадування "поїздка завершується завтра" ──────────────────
+
+@router.callback_query(F.data.startswith("trip_keep_"))
+async def trip_keep(callback: CallbackQuery):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Добре, залишаємо як є!")
+    await callback.message.answer(
+        "👍 Зрозуміло, дати залишаються без змін.\n\n"
+        "Нагадаємо: після завершення дат поїздка автоматично "
+        "приховається з пошуку — додайте нову, коли будете готові до наступної!"
+    )
+
+
+@router.callback_query(F.data.startswith("trip_edit_dates_"))
+async def trip_edit_dates_start(callback: CallbackQuery, state: FSMContext):
+    trip_id = int(callback.data.split("_")[3])
+    await state.update_data(editing_trip_id=trip_id)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await callback.message.answer(
+        "📅 *Нова дата виїзду?*\nФормат: ДД.ММ.РРРР (_наприклад: 10.08.2026_)",
+        parse_mode="Markdown",
+    )
+    await state.set_state(EditTripDates.waiting_new_date_from)
+
+
+@router.message(EditTripDates.waiting_new_date_from)
+async def trip_edit_date_from(message: Message, state: FSMContext):
+    await state.update_data(new_date_from=message.text.strip())
+    await message.answer(
+        "📅 *Нова дата повернення?*\nФормат: ДД.ММ.РРРР",
+        parse_mode="Markdown",
+    )
+    await state.set_state(EditTripDates.waiting_new_date_to)
+
+
+@router.message(EditTripDates.waiting_new_date_to)
+async def trip_edit_date_to(message: Message, state: FSMContext):
+    data = await state.get_data()
+    trip_id = data["editing_trip_id"]
+    new_date_to = message.text.strip()
+    await update_trip_dates(trip_id, data["new_date_from"], new_date_to)
+    await state.clear()
+    await message.answer(
+        f"✅ *Дати оновлено!*\n\n"
+        f"📅 {data['new_date_from']} — {new_date_to}\n\n"
+        "Поїздка знову видима в пошуку 🔍",
+        parse_mode="Markdown",
+    )
