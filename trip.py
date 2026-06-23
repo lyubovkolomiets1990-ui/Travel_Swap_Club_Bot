@@ -178,14 +178,38 @@ async def step_looking_for(callback: CallbackQuery, state: FSMContext, bot):
         traveler_type=data["traveler_type"],
     )
 
+    # Якщо профіль ще не верифікований — це перша поїздка нового користувача,
+    # надсилаємо повне сповіщення адміну (профіль + поїздка одночасно)
+    user_status = user["verification_status"] if "verification_status" in user.keys() else "new"
+    if user_status == "new":
+        from start import _notify_admins_new_user
+        trip_for_notify = {
+            "destination_city":    data["dest_city"],
+            "destination_country": data["dest_country"],
+            "date_from":           data["date_from"],
+            "date_to":             data["date_to"],
+            "guests_count":        data["guests"],
+        }
+        await _notify_admins_new_user(bot, callback.from_user.id, trip_for_notify)
+
+    user_status = user["verification_status"] if "verification_status" in user.keys() else "new"
+
+    verification_note = ""
+    if user_status == "new":
+        verification_note = (
+            "\n\n⏳ *Ваш профіль зараз на перевірці модератором.*\n"
+            "Це зазвичай займає кілька годин. Щойно профіль підтвердять — "
+            "ви отримаєте сповіщення, і він стане видимим іншим мандрівникам!"
+        )
+
     await callback.message.answer(
         f"✅ *Поїздку додано!*\n\n"
         f"✈️ {data['dest_city']}, {data['dest_country']}\n"
         f"📅 {data['date_from']} — {data['date_to']}\n"
         f"👥 Гостей: {data['guests']}\n"
         f"🧳 Ви: {tt_label}\n"
-        f"🔍 Шукаєте: {lf_label}\n\n"
-        "🔎 Шукаю матчі...",
+        f"🔍 Шукаєте: {lf_label}"
+        f"{verification_note}",
         parse_mode="Markdown",
     )
 
