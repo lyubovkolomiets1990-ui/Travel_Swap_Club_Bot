@@ -55,6 +55,9 @@ async def main():
     bot = Bot(token=token)
     dp  = Dispatcher(storage=MemoryStorage())
 
+    from ban_middleware import BanCheckMiddleware
+    dp.update.outer_middleware(BanCheckMiddleware())
+
     dp.include_router(start_handler.router)
     dp.include_router(trip_handler.router)
     dp.include_router(matches_handler.router)
@@ -62,9 +65,10 @@ async def main():
     dp.include_router(browse_handler.router)
     dp.include_router(calendar_handler.router)
 
-    from db import init_calendar_table, init_views_table
+    from db import init_calendar_table, init_views_table, init_bans_table
     await init_calendar_table()
     await init_views_table()
+    await init_bans_table()
     asyncio.create_task(run_reminders(bot))
     await set_commands(bot)
     me = await bot.get_me()
