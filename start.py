@@ -464,9 +464,94 @@ async def cancel_delete_profile(callback: CallbackQuery):
 
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile(callback: CallbackQuery, state: FSMContext):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🌍 Місто і країну",   callback_data="edit_location")
+    kb.button(text="📝 Опис житла",       callback_data="edit_description")
+    kb.button(text="📸 Фото",             callback_data="edit_photos")
+    kb.button(text="🐾 Тварини",          callback_data="edit_pets")
+    kb.button(text="ℹ️ Додаткову інфо",   callback_data="edit_extra")
+    kb.adjust(1)
+    await callback.message.answer(
+        "✏️ *Що бажаєте змінити?*",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_location")
+async def edit_location(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "🌍 *В якій країні ви живете?*\n_Наприклад: Кіпр_",
         parse_mode="Markdown",
     )
     await state.set_state(RegisterHome.waiting_country)
     await callback.answer()
+
+
+@router.callback_query(F.data == "edit_description")
+async def edit_description_start(callback: CallbackQuery, state: FSMContext):
+    user = await get_user(callback.from_user.id)
+    await state.update_data(
+        city=user["home_city"], country=user["home_country"],
+        photos=(user["home_photos"] or "").split(",") if user["home_photos"] else [],
+        has_pets=user["has_pets"], pets_info=user["pets_info"],
+        extra_info=user["extra_info"] if "extra_info" in user.keys() else "",
+        editing_field="description",
+    )
+    await callback.message.answer(
+        "📝 *Новий опис житла:*\n\n"
+        "_Наприклад: будинок, 5 хв до моря, машина включена, паркінг_",
+        parse_mode="Markdown",
+    )
+    await state.set_state(RegisterHome.waiting_description)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_photos")
+async def edit_photos_start(callback: CallbackQuery, state: FSMContext):
+    user = await get_user(callback.from_user.id)
+    await state.update_data(
+        city=user["home_city"], country=user["home_country"],
+        description=user["home_description"],
+        has_pets=user["has_pets"], pets_info=user["pets_info"],
+        extra_info=user["extra_info"] if "extra_info" in user.keys() else "",
+        photos=[],
+        editing_field="photos",
+    )
+    await callback.message.answer(
+        "📸 *Надішліть нові фото житла* (до 5 штук)\n\n"
+        "_Старі фото буде замінено новими_",
+        parse_mode="Markdown",
+        reply_markup=_skip_kb("photos_done"),
+    )
+    await state.set_state(RegisterHome.waiting_photos)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_pets")
+async def edit_pets_start(callback: CallbackQuery, state: FSMContext):
+    user = await get_user(callback.from_user.id)
+    await state.update_data(
+        city=user["home_city"], country=user["home_country"],
+        description=user["home_description"],
+        photos=(user["home_photos"] or "").split(",") if user["home_photos"] else [],
+        extra_info=user["extra_info"] if "extra_info" in user.keys() else "",
+        editing_field="pets",
+    )
+    await callback.answer()
+    await _ask_pets(callback.message, state)
+
+
+@router.callback_query(F.data == "edit_extra")
+async def edit_extra_start(callback: CallbackQuery, state: FSMContext):
+    user = await get_user(callback.from_user.id)
+    await state.update_data(
+        city=user["home_city"], country=user["home_country"],
+        description=user["home_description"],
+        photos=(user["home_photos"] or "").split(",") if user["home_photos"] else [],
+        has_pets=user["has_pets"], pets_info=user["pets_info"],
+        editing_field="extra",
+    )
+    await callback.answer()
+    await _ask_extra_info(callback.message, state)
