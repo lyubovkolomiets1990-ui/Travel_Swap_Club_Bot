@@ -23,6 +23,7 @@ class RegisterHome(StatesGroup):
     waiting_photos        = State()
     waiting_pets          = State()
     waiting_pets_info     = State()
+    waiting_extra_info    = State()
 
 
 def main_menu_kb():
@@ -302,13 +303,41 @@ async def pets_no(callback: CallbackQuery, state: FSMContext):
     await state.update_data(has_pets=0, pets_info="")
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
-    await _save_profile(callback.message, state)
+    await _ask_extra_info(callback.message, state)
 
 
 @router.message(RegisterHome.waiting_pets_info)
 async def pets_info(message: Message, state: FSMContext):
     await state.update_data(pets_info=message.text.strip())
+    await _ask_extra_info(message, state)
+
+
+async def _ask_extra_info(message: Message, state: FSMContext):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Пропустити", callback_data="extra_info_skip")
+    await message.answer(
+        "ℹ️ *Щось ще варто знати?*\n\n"
+        "Наприклад: машина включена в обмін, басейн, парковка, "
+        "особливі умови чи побажання.\n\n"
+        "_Можете пропустити, якщо нема що додати_",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup(),
+    )
+    await state.set_state(RegisterHome.waiting_extra_info)
+
+
+@router.message(RegisterHome.waiting_extra_info)
+async def extra_info_text(message: Message, state: FSMContext):
+    await state.update_data(extra_info=message.text.strip())
     await _save_profile(message, state)
+
+
+@router.callback_query(RegisterHome.waiting_extra_info, F.data == "extra_info_skip")
+async def extra_info_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(extra_info="")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _save_profile(callback.message, state)
 
 
 # ── Збереження профілю ────────────────────────────────────────────────────────
@@ -316,18 +345,21 @@ async def pets_info(message: Message, state: FSMContext):
 async def _save_profile(message: Message, state: FSMContext):
     data = await state.get_data()
     photos_str = ",".join(data.get("photos", []))
-    has_pets  = data.get("has_pets", 0)
-    pets_info = data.get("pets_info", "")
+    has_pets   = data.get("has_pets", 0)
+    pets_info  = data.get("pets_info", "")
+    extra_info = data.get("extra_info", "")
 
     await update_user_home(
         message.chat.id,
         data["city"], data["country"], data["description"],
         photos=photos_str, has_pets=has_pets, pets_info=pets_info,
+        extra_info=extra_info,
     )
     await state.clear()
 
     photos_count = len([p for p in photos_str.split(",") if p])
     pets_line = f"🐾 Тварини: {pets_info}\n" if has_pets else ""
+    extra_line = f"ℹ️ Інше: {extra_info}\n" if extra_info else ""
 
     kb = InlineKeyboardBuilder()
     kb.button(text="✈️ Додати першу поїздку", callback_data="add_trip")
@@ -337,7 +369,8 @@ async def _save_profile(message: Message, state: FSMContext):
         f"🏠 {data['city']}, {data['country']}\n"
         f"📝 {data['description']}\n"
         f"📸 Фото: {photos_count} шт.\n"
-        f"{pets_line}\n"
+        f"{pets_line}"
+        f"{extra_line}\n"
         "Тепер додайте поїздку, щоб почати шукати матчі!",
         parse_mode="Markdown",
         reply_markup=kb.as_markup(),
