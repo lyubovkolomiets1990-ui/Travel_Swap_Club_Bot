@@ -92,7 +92,11 @@ async def trip_card_text(trip: dict) -> str:
     pets = ""
     if trip.get("has_pets"):
         info = trip.get("pets_info") or "є"
-        pets = "Тварини: " + info + "\n"
+        pets = "🐾 Тварини: " + info + "\n"
+    extra = ""
+    extra_info = trip.get("extra_info")
+    if extra_info and extra_info not in ("", "None"):
+        extra = "ℹ️ Інше: " + extra_info + "\n"
     name = trip.get("name", "")
     home_city = trip.get("home_city", "")
     home_country = trip.get("home_country", "")
@@ -119,11 +123,11 @@ async def trip_card_text(trip: dict) -> str:
     return (
         "*" + name + "*\n"
         + rating_line +
-        "Живе: " + home_city + ", " + home_country + "\n"
-        "Їде до: *" + dest_city + ", " + dest_country + "*\n"
-        "Дати: " + (date_from + (" - " + date_to if date_to else "")) + "\n"
-        + pets +
-        "Житло: " + desc
+        "🏠 Живе: " + home_city + ", " + home_country + "\n"
+        "✈️ Їде до: *" + dest_city + ", " + dest_country + "*\n"
+        "📅 Дати: " + (date_from + (" - " + date_to if date_to else "")) + "\n"
+        + pets + extra +
+        "📝 Житло: " + desc
     )
 
 
@@ -448,10 +452,13 @@ async def view_specific_user(callback: CallbackQuery):
             city = user["home_city"] or ""
             country = user["home_country"] or ""
             desc = user["home_description"] or "опис не вказано"
+            extra = user["extra_info"] if "extra_info" in user.keys() else ""
+            extra_line = ("ℹ️ Інше: " + extra + "\n") if extra else ""
             await callback.message.answer(
                 "*" + name + "*\n" +
-                "Живе: " + city + ", " + country + "\n" +
-                "Житло: " + desc + "\n\n" +
+                "🏠 Живе: " + city + ", " + country + "\n" +
+                "📝 Житло: " + desc + "\n" +
+                extra_line + "\n" +
                 "_Ця людина ще не додала активну поїздку_",
                 parse_mode="Markdown",
             )
