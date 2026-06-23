@@ -100,7 +100,7 @@ async def start_review(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(ReviewFSM.cleanliness, F.data.startswith("rate_cleanliness_"))
 async def rate_cleanliness(callback: CallbackQuery, state: FSMContext):
-    val = int(callback.data.split("_")[2])
+    val = int(callback.data.rsplit("_", 1)[1])
     await state.update_data(cleanliness=val)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(
@@ -115,7 +115,7 @@ async def rate_cleanliness(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(ReviewFSM.communication, F.data.startswith("rate_communication_"))
 async def rate_communication(callback: CallbackQuery, state: FSMContext):
-    val = int(callback.data.split("_")[2])
+    val = int(callback.data.rsplit("_", 1)[1])
     await state.update_data(communication=val)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(
@@ -130,7 +130,7 @@ async def rate_communication(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(ReviewFSM.rule_following, F.data.startswith("rate_rule_following_"))
 async def rate_rule_following(callback: CallbackQuery, state: FSMContext):
-    val = int(callback.data.split("_")[2])
+    val = int(callback.data.rsplit("_", 1)[1])
     await state.update_data(rule_following=val)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(
@@ -145,7 +145,7 @@ async def rate_rule_following(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(ReviewFSM.overall, F.data.startswith("rate_overall_"))
 async def rate_overall(callback: CallbackQuery, state: FSMContext):
-    val = int(callback.data.split("_")[2])
+    val = int(callback.data.rsplit("_", 1)[1])
     await state.update_data(overall=val)
     await callback.message.edit_reply_markup(reply_markup=None)
 
