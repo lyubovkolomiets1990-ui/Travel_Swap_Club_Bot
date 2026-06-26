@@ -22,6 +22,16 @@ LOOKING_FOR_LABELS = {
 }
 
 
+def format_looking_for_labels(value: str) -> str:
+    """Перетворює 'couple,family' -> '💑 Пари, 👨‍👩‍👧 Сім'ї'"""
+    from matcher import parse_looking_for
+    keys = parse_looking_for(value)
+    if "anyone" in keys:
+        return LOOKING_FOR_LABELS["anyone"]
+    labels = [LOOKING_FOR_LABELS[k] for k in keys if k in LOOKING_FOR_LABELS]
+    return ", ".join(labels) if labels else LOOKING_FOR_LABELS["anyone"]
+
+
 def dates_overlap(from1: str, to1: str, from2: str, to2: str) -> bool:
     fmt = "%d.%m.%Y"
     try:
@@ -32,15 +42,25 @@ def dates_overlap(from1: str, to1: str, from2: str, to2: str) -> bool:
         return False
 
 
+def parse_looking_for(value: str) -> set:
+    """looking_for зберігається як рядок з кількома значеннями через кому,
+    напр. 'couple,family,solo'. Для старих записів — одне значення."""
+    if not value:
+        return {"anyone"}
+    return {v.strip() for v in value.split(",") if v.strip()}
+
+
 def types_compatible(a_looking_for: str, b_type: str,
                      b_looking_for: str, a_type: str) -> bool:
     """
     Матч можливий якщо:
-    - A шукає тип B (або A шукає «будь-кого»)
-    - B шукає тип A (або B шукає «будь-кого»)
+    - A шукає тип B серед обраних варіантів (або A шукає «будь-кого»)
+    - B шукає тип A серед обраних варіантів (або B шукає «будь-кого»)
     """
-    a_ok = a_looking_for == "anyone" or a_looking_for == b_type
-    b_ok = b_looking_for == "anyone" or b_looking_for == a_type
+    a_choices = parse_looking_for(a_looking_for)
+    b_choices = parse_looking_for(b_looking_for)
+    a_ok = "anyone" in a_choices or b_type in a_choices
+    b_ok = "anyone" in b_choices or a_type in b_choices
     return a_ok and b_ok
 
 
@@ -56,6 +76,12 @@ async def find_matches(new_trip: dict) -> list[dict]:
 
     for trip in all_trips:
         if trip["id"] == new_trip.get("id"):
+            continue
+
+        # Пропускаємо неверифіковані профілі — не показуємо їх як матчі
+        trip_keys = trip.keys()
+        is_verified = ("verification_status" not in trip_keys) or trip["verification_status"] == "verified"
+        if not is_verified:
             continue
 
         # Географія
