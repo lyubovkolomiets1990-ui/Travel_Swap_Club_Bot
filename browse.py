@@ -61,7 +61,8 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
         has_city  = ("home_city" in trip_keys and trip["home_city"]) and trip["home_city"] not in ("", "None")
         has_desc  = ("home_description" in trip_keys and trip["home_description"]) and trip["home_description"] not in ("", "None")
         has_photo = ("home_photos" in trip_keys and trip["home_photos"]) and trip["home_photos"] not in ("", "None")
-        if not (has_city and has_desc and has_photo):
+        is_verified = ("verification_status" not in trip_keys) or trip["verification_status"] == "verified"
+        if not (has_city and has_desc and has_photo and is_verified):
             continue
         if city_query:
             dest_city = (trip["destination_city"] or "").strip().lower()
@@ -86,9 +87,9 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
 
 
 async def trip_card_text(trip: dict) -> str:
-    from matcher import TRAVELER_TYPES, LOOKING_FOR_LABELS
+    from matcher import TRAVELER_TYPES, LOOKING_FOR_LABELS, format_looking_for_labels
     tt = TRAVELER_TYPES.get(trip.get("traveler_type", "anyone"), "будь-хто")
-    lf = LOOKING_FOR_LABELS.get(trip.get("looking_for", "anyone"), "будь-кого")
+    lf = format_looking_for_labels(trip.get("looking_for", "anyone"))
     pets = ""
     if trip.get("has_pets"):
         info = trip.get("pets_info") or "є"
@@ -372,6 +373,9 @@ async def browse_like(callback: CallbackQuery, bot):
     if my_tg_id in their_liked_ids:
         await _send_match(bot, callback.message, me, them, my_tg_id, owner_tg)
     else:
+        await callback.message.answer(
+            "❤️ Лайк зараховано! Якщо буде взаємний інтерес — повідомимо вас 🔔"
+        )
         try:
             kb = InlineKeyboardBuilder()
             kb.button(text="Подивитись профіль", callback_data="view_user_" + str(my_tg_id))
@@ -507,7 +511,6 @@ async def _send_match(bot, message, me, them, my_tg_id, owner_tg):
     if match_id:
         kb1.button(text="⭐️ Залишити відгук", callback_data="start_review_" + str(match_id))
         kb1.button(text="❌ Не домовились — шукати далі", callback_data="cancel_match_" + str(match_id))
-    kb1.button(text="Зрозуміло!", callback_data="safety_ok")
     kb1.adjust(1)
 
     await message.answer(
@@ -526,7 +529,6 @@ async def _send_match(bot, message, me, them, my_tg_id, owner_tg):
     if match_id:
         kb2.button(text="⭐️ Залишити відгук", callback_data="start_review_" + str(match_id))
         kb2.button(text="❌ Не домовились — шукати далі", callback_data="cancel_match_" + str(match_id))
-    kb2.button(text="Зрозуміло!", callback_data="safety_ok")
     kb2.adjust(1)
 
     try:
