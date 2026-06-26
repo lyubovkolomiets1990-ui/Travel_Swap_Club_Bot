@@ -9,7 +9,8 @@ import difflib
 from db import (get_user, get_active_trips, get_user_trips,
                 add_like, get_liked_users, remove_like,
                 create_match, get_existing_match,
-                mark_viewed, get_viewed_ids, get_user_rating)
+                mark_viewed, get_viewed_ids, get_user_rating,
+                get_reviews_for_user)
 
 router = Router()
 
@@ -136,10 +137,12 @@ def browse_kb(trip: dict, idx: int, total: int):
     kb = InlineKeyboardBuilder()
     tid = trip["id"]
     tg = trip["telegram_id"]
+    uid = trip.get("user_id") or 0
     kb.button(text="❤️ Лайк", callback_data="bl_" + str(tid) + "_" + str(tg) + "_" + str(idx))
     kb.button(text="❓ Запитати", callback_data="bq_" + str(tg) + "_" + str(idx))
+    kb.button(text="📝 Відгуки", callback_data="brev_" + str(uid) + "_" + str(idx))
     kb.button(text="👎 Далі", callback_data="bs_" + str(idx))
-    kb.adjust(2, 1)
+    kb.adjust(2, 1, 1)
     return kb.as_markup()
 
 
@@ -425,6 +428,28 @@ async def browse_continue(callback: CallbackQuery):
             "Повертайтесь пізніше — база росте щодня 🌱",
             reply_markup=kb.as_markup(),
         )
+
+
+@router.callback_query(F.data.startswith("brev_"))
+async def browse_show_reviews(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    user_db_id = int(parts[1])
+    await callback.answer()
+
+    reviews = await get_reviews_for_user(user_db_id)
+    if not reviews:
+        await callback.message.answer("📝 У цієї людини ще немає відгуків.")
+        return
+
+    lines = [f"📝 *Відгуки* ({len(reviews)}):\n"]
+    for rev in reviews[:10]:
+        stars = "⭐️" * round(rev["overall"])
+        line = f"{stars} *{rev['reviewer_name']}*"
+        if rev["comment"]:
+            line += f"\n_{rev['comment']}_"
+        lines.append(line)
+
+    await callback.message.answer("\n\n".join(lines), parse_mode="Markdown")
 
 
 @router.callback_query(F.data.startswith("bs_"))
