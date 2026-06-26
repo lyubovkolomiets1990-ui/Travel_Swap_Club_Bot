@@ -349,6 +349,22 @@ async def get_both_reviews(match_id: int):
             return await cursor.fetchall()
 
 
+async def get_reviews_for_user(user_db_id: int) -> list:
+    """Повертає список відгуків (з коментарями) про конкретну людину,
+    від найновіших до найстаріших, разом з іменем того, хто залишив."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT r.*, u.name AS reviewer_name
+               FROM reviews r
+               JOIN users u ON u.id = r.reviewer_id
+               WHERE r.reviewee_id=?
+               ORDER BY r.created_at DESC""",
+            (user_db_id,),
+        ) as cursor:
+            return await cursor.fetchall()
+
+
 async def get_user_rating(user_db_id: int) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
