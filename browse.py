@@ -345,6 +345,8 @@ async def browse_like(callback: CallbackQuery, bot):
     if not my_trips_check:
         kb_redirect = InlineKeyboardBuilder()
         kb_redirect.button(text="✈️ Додати поїздку", callback_data="add_trip")
+        kb_redirect.button(text="🔍 Переглянути далі", callback_data="bcont_" + str(idx))
+        kb_redirect.adjust(1)
         await callback.answer(
             "Щоб лайкати — додайте спочатку свою поїздку 👇",
             show_alert=True,
@@ -404,6 +406,24 @@ async def browse_like(callback: CallbackQuery, bot):
             "✅ Ви переглянули всіх нових мандрівників!\n"
             "Повертайтесь пізніше — база росте щодня 🌱",
             reply_markup=kb_end.as_markup(),
+        )
+
+
+@router.callback_query(F.data.startswith("bcont_"))
+async def browse_continue(callback: CallbackQuery):
+    idx = int(callback.data.split("_")[1])
+    await callback.answer()
+    cards = await get_browse_cards(callback.from_user.id)
+    next_idx = idx + 1
+    if next_idx < len(cards):
+        await send_card(callback.message, cards[next_idx], next_idx, len(cards))
+    else:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🔄 Почати спочатку", callback_data="browse_reset")
+        await callback.message.answer(
+            "✅ Ви переглянули всіх нових мандрівників!\n"
+            "Повертайтесь пізніше — база росте щодня 🌱",
+            reply_markup=kb.as_markup(),
         )
 
 
