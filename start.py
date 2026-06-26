@@ -11,6 +11,17 @@ import difflib
 
 router = Router()
 
+import asyncio
+_photo_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_photo_lock(user_id: int) -> asyncio.Lock:
+    lock = _photo_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _photo_locks[user_id] = lock
+    return lock
+
 
 class OnboardingFSM(StatesGroup):
     waiting_agreement = State()
@@ -160,9 +171,6 @@ async def agree_and_start(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("🎉 Чудово! Починаємо!")
     await callback.message.answer(
-        "🏡 *Ласкаво просимо до Travel Swap Club!*\n\n"
-        "Це платформа для обміну житлом між мандрівниками 🌍\n\n"
-        "Наприклад: ви їдете до Барселони — хтось із Барселони приїде до вас.\n\n"
         "Давайте почнемо 👇\n\n"
         "🌍 *В якій країні ви живете?*\n"
         "_Наприклад: Кіпр_",
@@ -260,19 +268,20 @@ async def home_description(message: Message, state: FSMContext):
 
 @router.message(RegisterHome.waiting_photos, F.photo)
 async def home_photo(message: Message, state: FSMContext):
-    data = await state.get_data()
-    photos = data.get("photos", [])
-    photos.append(message.photo[-1].file_id)
-    await state.update_data(photos=photos)
-    count = len(photos)
-    if count >= 5:
-        await message.answer("✅ 5 фото збережено!")
-        await _ask_pets(message, state)
-    else:
-        await message.answer(
-            f"✅ Фото {count}/5 збережено. Надішліть ще або натисніть «Готово»",
-            reply_markup=_skip_kb("photos_done"),
-        )
+    async with _get_photo_lock(message.from_user.id):
+        data = await state.get_data()
+        photos = data.get("photos", [])
+        photos.append(message.photo[-1].file_id)
+        await state.update_data(photos=photos)
+        count = len(photos)
+        if count >= 5:
+            await message.answer("✅ 5 фото збережено!")
+            await _ask_pets(message, state)
+        else:
+            await message.answer(
+                f"✅ Фото {count}/5 збережено. Надішліть ще або натисніть «Готово»",
+                reply_markup=_skip_kb("photos_done"),
+            )
 
 
 @router.callback_query(RegisterHome.waiting_photos, F.data == "photos_done")
@@ -389,6 +398,8 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
 
     kb = InlineKeyboardBuilder()
     kb.button(text="✈️ Додати поїздку", callback_data="add_trip")
+    kb.button(text="🔍 Переглянути всіх", callback_data="browse_start")
+    kb.adjust(1)
 
     closing_line = (
         "Ваш профіль на перегляді в модерації — оновлення вже надіслано! ✅"
@@ -653,6 +664,13 @@ async def cancel_delete_profile(callback: CallbackQuery):
 
 
 # ── Адмінська команда: видалення чужого профілю ───────────────────────────────
+
+@router.message(Command("whatchatid"))
+async def cmd_whatchatid(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await message.answer(f"🆔 ID цього чату: `{message.chat.id}`", parse_mode="Markdown")
+
 
 @router.message(Command("admin_delete"))
 async def cmd_admin_delete(message: Message):
@@ -1033,19 +1051,20 @@ async def edit_photos_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(QuickEdit.waiting_photos, F.photo)
 async def quick_edit_photo(message: Message, state: FSMContext, bot):
-    data = await state.get_data()
-    photos = data.get("photos", [])
-    photos.append(message.photo[-1].file_id)
-    await state.update_data(photos=photos)
-    count = len(photos)
-    if count >= 5:
-        await message.answer("✅ 5 фото збережено!")
-        await _save_profile(message, state, bot)
-    else:
-        await message.answer(
-            f"✅ Фото {count}/5 збережено. Надішліть ще або натисніть «Готово»",
-            reply_markup=_skip_kb("quick_photos_done"),
-        )
+    async with _get_photo_lock(message.from_user.id):
+        data = await state.get_data()
+        photos = data.get("photos", [])
+        photos.append(message.photo[-1].file_id)
+        await state.update_data(photos=photos)
+        count = len(photos)
+        if count >= 5:
+            await message.answer("✅ 5 фото збережено!")
+            await _save_profile(message, state, bot)
+        else:
+            await message.answer(
+                f"✅ Фото {count}/5 збережено. Надішліть ще або натисніть «Готово»",
+                reply_markup=_skip_kb("quick_photos_done"),
+            )
 
 
 @router.callback_query(QuickEdit.waiting_photos, F.data == "quick_photos_done")
