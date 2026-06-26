@@ -23,6 +23,22 @@ def _get_photo_lock(user_id: int) -> asyncio.Lock:
     return lock
 
 
+def is_admin_message(message: Message) -> bool:
+    """Перевіряє чи має право користувач виконувати адмін-команду.
+    Якщо команда написана прямо в каналі модерації від імені самого каналу
+    (sender_chat), у message.from_user буде None — в такому разі довіряємо,
+    бо постити в канал можуть лише його адміни."""
+    if message.from_user and message.from_user.id in ADMIN_IDS:
+        return True
+    if (
+        message.sender_chat
+        and VERIFICATION_CHANNEL_ID
+        and message.sender_chat.id == VERIFICATION_CHANNEL_ID
+    ):
+        return True
+    return False
+
+
 class OnboardingFSM(StatesGroup):
     waiting_agreement = State()
 
@@ -676,14 +692,14 @@ async def cancel_delete_profile(callback: CallbackQuery):
 
 @router.message(Command("whatchatid"))
 async def cmd_whatchatid(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin_message(message):
         return
     await message.answer(f"🆔 ID цього чату: `{message.chat.id}`", parse_mode="Markdown")
 
 
 @router.message(Command("admin_delete"))
 async def cmd_admin_delete(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin_message(message):
         return  # ігноруємо мовчки, не показуємо що команда існує
 
     parts = message.text.split(maxsplit=1)
@@ -751,7 +767,7 @@ async def admin_cancel_delete(callback: CallbackQuery):
 
 @router.message(Command("ban"))
 async def cmd_ban(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin_message(message):
         return
 
     parts = message.text.split(maxsplit=2)
@@ -779,7 +795,7 @@ async def cmd_ban(message: Message):
 
 @router.message(Command("unban"))
 async def cmd_unban(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin_message(message):
         return
 
     parts = message.text.split(maxsplit=1)
@@ -800,7 +816,7 @@ async def cmd_unban(message: Message):
 
 @router.message(Command("banned_list"))
 async def cmd_banned_list(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin_message(message):
         return
 
     from db import get_all_banned
@@ -944,7 +960,7 @@ async def _send_rejection(bot, target_id: int, reason_text: str):
 
 @router.message(Command("pending"))
 async def cmd_pending_verifications(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin_message(message):
         return
 
     from db import get_pending_verifications
