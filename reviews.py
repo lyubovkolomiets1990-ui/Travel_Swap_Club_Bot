@@ -65,7 +65,7 @@ async def send_review_request(bot, match_id: int, telegram_id: int, partner_name
         telegram_id,
         f"🏠 Ваш обмін з *{partner_name}* завершено!\n\n"
         "Будь ласка, залиште відгук — це допомагає спільноті 🙏\n\n"
-        "_Ваша оцінка буде схована до того моменту, поки партнер теж не залишить свою._",
+        "_Рейтинг враховується одразу і видимий іншим мандрівникам._",
         parse_mode="Markdown",
         reply_markup=kb.as_markup(),
     )
@@ -209,10 +209,17 @@ async def _finish_review(message: Message, state: FSMContext, bot, comment: str,
     avg = round((data["cleanliness"] + data["communication"] +
                  data["rule_following"] + data["overall"]) / 4, 1)
 
+    partner_already_reviewed = await get_review(match_id, reviewee_db_id) is not None
+
+    closing_line = (
+        "" if partner_already_reviewed else
+        f"\n\nОчікуйте відгука від *{partner_name}* 🙏"
+    )
+
     await message.answer(
         f"✅ *Відгук збережено!* Дякуємо 🙏\n\n"
-        f"Ваша оцінка: *{avg}* ⭐️\n\n"
-        "_Оцінки стануть видимі після того, як партнер теж залишить свій відгук._",
+        f"Ваша оцінка: *{avg}* ⭐️"
+        f"{closing_line}",
         parse_mode="Markdown",
     )
 
