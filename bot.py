@@ -19,9 +19,9 @@ async def set_commands(bot: Bot):
     await bot.set_my_commands([
         BotCommand(command="start",  description="🏠 Головне меню"),
         BotCommand(command="trip",   description="✈️ Додати поїздку"),
+        BotCommand(command="browse",   description="🔍 Переглянути мандрівників"),
         BotCommand(command="saved",  description="❤️ Збережені хости"),
         BotCommand(command="rating", description="📊 Мій рейтинг"),
-        BotCommand(command="browse",   description="🔍 Переглянути мандрівників"),
         BotCommand(command="calendar", description="📅 Календар доступності"),
         BotCommand(command="top",      description="⭐️ Топ за рейтингом"),
         BotCommand(command="find_home", description="🏠 Куди я хочу поїхати"),
