@@ -1,12 +1,12 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import re
 
 from db import get_user, create_trip, get_user_trips, update_trip_dates, get_trip_by_id, mark_trip_completed
-from matcher import find_matches, save_match, TRAVELER_TYPES, LOOKING_FOR_LABELS
+from matcher import find_matches, save_match, TRAVELER_TYPES, LOOKING_FOR_LABELS, format_looking_for_labels, parse_looking_for
 
 router = Router()
 DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
@@ -38,16 +38,20 @@ def traveler_type_kb() -> object:
     return kb.as_markup()
 
 
-def looking_for_kb() -> object:
+def looking_for_kb(selected: set = None) -> object:
+    selected = selected or set()
     kb = InlineKeyboardBuilder()
     for key, label in LOOKING_FOR_LABELS.items():
-        kb.button(text=label, callback_data=f"lookfor_{key}")
+        mark = "✅ " if key in selected else ""
+        kb.button(text=mark + label, callback_data=f"lookfor_{key}")
     kb.adjust(2)
+    if selected:
+        kb.row(InlineKeyboardButton(text="➡️ Готово", callback_data="lookfor_done"))
     return kb.as_markup()
 
 
 def format_trip(trip) -> str:
-    lf = LOOKING_FOR_LABELS.get(trip.get("looking_for", "anyone"), "🌍 Будь-кого")
+    lf = format_looking_for_labels(trip.get("looking_for", "anyone"))
     tt = TRAVELER_TYPES.get(trip.get("traveler_type", "anyone"), "🌍 Будь-хто")
     return (
         f"✈️ {trip['destination_city']}, {trip['destination_country']}\n"
@@ -139,13 +143,15 @@ async def step_guests(message: Message, state: FSMContext):
 @router.callback_query(AddTrip.waiting_my_type, F.data.startswith("mytype_"))
 async def step_my_type(callback: CallbackQuery, state: FSMContext):
     traveler_type = callback.data.split("_", 1)[1]
-    await state.update_data(traveler_type=traveler_type)
+    await state.update_data(traveler_type=traveler_type, looking_for_selected=[])
     await callback.message.edit_reply_markup(reply_markup=None)
 
     label = TRAVELER_TYPES.get(traveler_type, "")
     await callback.message.answer(
         f"Ви: *{label}* ✅\n\n"
-        "🔍 *Кого шукаєте для обміну?*\n\nХто може жити у вашому домі поки ви подорожуєте?",
+        "🔍 *Кого шукаєте для обміну?*\n\n"
+        "Хто може жити у вашому домі поки ви подорожуєте? "
+        "_Можна обрати декілька варіантів_",
         parse_mode="Markdown",
         reply_markup=looking_for_kb(),
     )
@@ -153,17 +159,42 @@ async def step_my_type(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.callback_query(AddTrip.waiting_looking_for, F.data.startswith("lookfor_"))
+@router.callback_query(AddTrip.waiting_looking_for, F.data.startswith("lookfor_"), ~F.data.endswith("_done"))
+async def toggle_looking_for(callback: CallbackQuery, state: FSMContext):
+    key = callback.data.split("_", 1)[1]
+    data = await state.get_data()
+    selected = set(data.get("looking_for_selected", []))
+
+    if key == "anyone":
+        # "Будь-кого" виключає всі інші конкретні варіанти
+        selected = set() if "anyone" in selected else {"anyone"}
+    else:
+        selected.discard("anyone")
+        if key in selected:
+            selected.discard(key)
+        else:
+            selected.add(key)
+
+    await state.update_data(looking_for_selected=list(selected))
+    await callback.message.edit_reply_markup(reply_markup=looking_for_kb(selected))
+    await callback.answer()
+
+
+@router.callback_query(AddTrip.waiting_looking_for, F.data == "lookfor_done")
 async def step_looking_for(callback: CallbackQuery, state: FSMContext, bot):
-    looking_for = callback.data.split("_", 1)[1]
-    await state.update_data(looking_for=looking_for)
+    data = await state.get_data()
+    selected = set(data.get("looking_for_selected", []))
+    if not selected:
+        await callback.answer("Оберіть хоча б один варіант 👆", show_alert=True)
+        return
+
+    looking_for = ",".join(selected)
     await callback.message.edit_reply_markup(reply_markup=None)
 
-    data = await state.get_data()
     user = await get_user(callback.from_user.id)
     await state.clear()
 
-    lf_label = LOOKING_FOR_LABELS.get(looking_for, "")
+    lf_label = format_looking_for_labels(looking_for)
     tt_label = TRAVELER_TYPES.get(data["traveler_type"], "")
 
     # Зберігаємо поїздку
@@ -229,9 +260,12 @@ async def step_looking_for(callback: CallbackQuery, state: FSMContext, bot):
     found = await find_matches(new_trip)
 
     if not found:
+        kb_no_match = InlineKeyboardBuilder()
+        kb_no_match.button(text="🔍 Переглянути всіх мандрівників", callback_data="browse_start")
         await callback.message.answer(
             "😔 Поки що матчів за вашими фільтрами не знайдено.\n"
-            "Ми повідомимо вас, щойно хтось підходящий з'явиться! 🔔"
+            "Ми повідомимо вас, щойно хтось підходящий з'явиться! 🔔",
+            reply_markup=kb_no_match.as_markup(),
         )
         await callback.answer()
         return
@@ -239,7 +273,7 @@ async def step_looking_for(callback: CallbackQuery, state: FSMContext, bot):
     for match_trip in found:
         match_id = await save_match(trip_id, match_trip["id"])
         tt = TRAVELER_TYPES.get(match_trip.get("traveler_type", "anyone"), "")
-        lf = LOOKING_FOR_LABELS.get(match_trip.get("looking_for", "anyone"), "")
+        lf = format_looking_for_labels(match_trip.get("looking_for", "anyone"))
 
         # Для поточного користувача
         kb = InlineKeyboardBuilder()
@@ -268,7 +302,7 @@ async def step_looking_for(callback: CallbackQuery, state: FSMContext, bot):
         kb2.adjust(2)
 
         my_tt = TRAVELER_TYPES.get(data["traveler_type"], "")
-        my_lf = LOOKING_FOR_LABELS.get(looking_for, "")
+        my_lf = format_looking_for_labels(looking_for)
 
         try:
             await bot.send_message(
