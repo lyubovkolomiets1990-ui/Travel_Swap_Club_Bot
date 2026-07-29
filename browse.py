@@ -311,6 +311,8 @@ async def show_browse(message: Message, my_tg_id: int, idx: int, sort_by_rating:
             )
         else:
             kb.button(text="Додати свою поїздку", callback_data="add_trip")
+            kb.button(text="🔄 Переглянути всіх знову", callback_data="browse_reset")
+            kb.adjust(1)
             await message.answer(
                 "Поки що немає інших мандрівників з активними поїздками.\n\n"
                 "Додайте свою поїздку — і як тільки хтось з'явиться, ви побачите їх тут!",
