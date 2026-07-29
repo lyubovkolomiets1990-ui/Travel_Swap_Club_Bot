@@ -46,7 +46,6 @@ async def init_db():
                 FOREIGN KEY (trip_id_2) REFERENCES trips(id)
             )
         """)
-        # Відгуки після завершення обміну
         await db.execute("""
             CREATE TABLE IF NOT EXISTS reviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +64,6 @@ async def init_db():
                 UNIQUE(match_id, reviewer_id)
             )
         """)
-        # Лайки — збережені хости
         await db.execute("""
             CREATE TABLE IF NOT EXISTS likes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +75,6 @@ async def init_db():
                 UNIQUE(from_user_id, to_user_id)
             )
         """)
-        # Додаємо нові поля якщо їх ще немає (для існуючих БД)
         for col, default in [
             ("home_photos", "''"),
             ("has_pets", "0"),
@@ -93,8 +90,6 @@ async def init_db():
             await db.execute("ALTER TABLE matches ADD COLUMN reminder_sent INTEGER DEFAULT 0")
         except Exception:
             pass
-        # Існуючих користувачів із заповненим профілем одразу позначаємо verified,
-        # щоб нова верифікація стосувалась лише НОВИХ реєстрацій після цього оновлення
         await db.execute(
             """UPDATE users SET verification_status='verified'
                WHERE home_city IS NOT NULL AND home_city != ''
@@ -133,10 +128,15 @@ async def set_verification_status(telegram_id: int, status: str):
 
 
 async def get_pending_verifications() -> list:
+    """Повертає юзерів зі статусом 'new' які мають хоча б активну поїздку.
+    Тих хто просто зайшов і не заповнив профіль — не показуємо."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM users WHERE verification_status='new' ORDER BY registered_at"
+            """SELECT DISTINCT u.* FROM users u
+               INNER JOIN trips t ON t.user_id = u.id AND t.status = 'active'
+               WHERE u.verification_status = 'new'
+               ORDER BY u.registered_at"""
         ) as cursor:
             return await cursor.fetchall()
 
@@ -197,8 +197,6 @@ async def get_trip_by_id(trip_id: int):
 
 
 async def mark_expired_trips_completed() -> int:
-    """Позначає 'completed' усі активні поїздки де date_to вже минула.
-    Поїздки з гнучкими датами ('гнучко') не торкаємось — вони не мають дедлайну."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -225,7 +223,6 @@ async def mark_expired_trips_completed() -> int:
 
 
 async def get_trips_ending_tomorrow() -> list:
-    """Активні поїздки де date_to — це завтра (для попередження за 1 день)"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -350,8 +347,6 @@ async def get_both_reviews(match_id: int):
 
 
 async def get_reviews_for_user(user_db_id: int) -> list:
-    """Повертає список відгуків (з коментарями) про конкретну людину,
-    від найновіших до найстаріших, разом з іменем того, хто залишив."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -513,7 +508,6 @@ async def mark_reminder_sent(match_id: int):
 
 
 async def get_all_users_with_home() -> list:
-    """Всі користувачі у кого є профіль з житлом"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -535,7 +529,7 @@ async def get_all_users_with_home() -> list:
             return await cursor.fetchall()
 
 
-# ── Перегляди в browse (щоб не показувати повторно) ──────────────────────────
+# ── Перегляди в browse ────────────────────────────────────────────────────────
 
 async def init_views_table():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -571,14 +565,12 @@ async def get_viewed_ids(viewer_tg_id: int) -> set:
 
 
 async def delete_user_profile(telegram_id: int):
-    """Повністю видаляє користувача і всі пов'язані дані: поїздки, лайки, перегляди, відгуки."""
     user = await get_user(telegram_id)
     if not user:
         return False
     user_db_id = user["id"]
 
     async with aiosqlite.connect(DB_PATH) as db:
-        # Видаляємо поїздки і пов'язані матчі
         cursor = await db.execute("SELECT id FROM trips WHERE user_id=?", (user_db_id,))
         trip_ids = [row[0] for row in await cursor.fetchall()]
 
@@ -588,32 +580,22 @@ async def delete_user_profile(telegram_id: int):
                 (trip_id, trip_id),
             )
         await db.execute("DELETE FROM trips WHERE user_id=?", (user_db_id,))
-
-        # Видаляємо лайки де користувач учасник (за telegram_id)
         await db.execute(
             "DELETE FROM likes WHERE from_user_id=? OR to_user_id=?",
             (user_db_id, user_db_id),
         )
-
-        # Видаляємо історію переглядів browse
         await db.execute(
             "DELETE FROM browse_views WHERE viewer_telegram_id=? OR viewed_telegram_id=?",
             (telegram_id, telegram_id),
         )
-
-        # Видаляємо заблоковані місяці календаря
         await db.execute(
             "DELETE FROM blocked_months WHERE telegram_id=?",
             (telegram_id,),
         )
-
-        # Видаляємо відгуки де користувач учасник
         await db.execute(
             "DELETE FROM reviews WHERE reviewer_id=? OR reviewee_id=?",
             (user_db_id, user_db_id),
         )
-
-        # Видаляємо сам профіль
         await db.execute("DELETE FROM users WHERE telegram_id=?", (telegram_id,))
         await db.commit()
 
@@ -621,7 +603,6 @@ async def delete_user_profile(telegram_id: int):
 
 
 async def get_all_known_cities() -> list:
-    """Всі унікальні міста (домашні і призначення) для нечіткого пошуку схожості"""
     async with aiosqlite.connect(DB_PATH) as db:
         cities = set()
         async with db.execute("SELECT DISTINCT home_city FROM users WHERE home_city IS NOT NULL AND home_city != ''") as cursor:
