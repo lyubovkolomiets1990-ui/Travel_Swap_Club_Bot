@@ -685,8 +685,17 @@ async def cancel_delete_profile(callback: CallbackQuery):
 
 # ── Адмінська команда: видалення чужого профілю ───────────────────────────────
 
-@router.message(Command("verify_all"))
-async def cmd_verify_all(message: Message):
+@router.message(Command("clear_views"))
+async def cmd_clear_views(message: Message):
+    """Очищає старі browse_views для всіх юзерів — одноразова міграція"""
+    if not is_admin_message(message):
+        return
+    import aiosqlite
+    from config import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM browse_views")
+        await db.commit()
+    await message.answer("✅ Старі перегляди очищено.")
     """Одноразова команда — верифікує всіх існуючих юзерів з заповненим профілем"""
     if not is_admin_message(message):
         return
