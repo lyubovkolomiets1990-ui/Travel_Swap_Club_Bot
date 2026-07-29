@@ -8,7 +8,9 @@ import difflib
 from db import (get_user, get_active_trips, get_user_trips,
                 add_like, get_liked_users, remove_like,
                 create_match, get_existing_match,
-                mark_viewed, get_viewed_ids, get_user_rating,
+                mark_skipped, mark_viewed, get_skipped_ids,
+                get_liked_telegram_ids, clear_skipped,
+                get_viewed_ids, get_user_rating,
                 get_reviews_for_user)
 
 router = Router()
@@ -37,7 +39,16 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
                            sort_by_rating: bool = False, filter_city: str = None,
                            filter_home_city: str = None) -> list:
     all_trips = await get_active_trips()
-    viewed_ids = await get_viewed_ids(my_telegram_id) if skip_viewed else set()
+
+    if skip_viewed:
+        skipped_ids = await get_skipped_ids(my_telegram_id)
+        liked_ids = await get_liked_telegram_ids(my_telegram_id)
+        hidden_ids = skipped_ids | liked_ids
+    else:
+        # "Почати спочатку" — показуємо скіпнутих але не лайкнутих
+        liked_ids = await get_liked_telegram_ids(my_telegram_id)
+        hidden_ids = liked_ids
+
     seen_users = set()
     cards = []
     city_query = filter_city.strip().lower() if filter_city else None
@@ -49,7 +60,7 @@ async def get_browse_cards(my_telegram_id: int, skip_viewed: bool = True,
             continue
         if tg_id in seen_users:
             continue
-        if tg_id in viewed_ids:
+        if tg_id in hidden_ids:
             continue
 
         trip_keys = trip.keys()
@@ -271,15 +282,10 @@ async def browse_start(callback: CallbackQuery):
 
 @router.callback_query(F.data == "browse_reset")
 async def browse_reset(callback: CallbackQuery):
-    import db as _db
-    async with _db.aiosqlite.connect(_db.DB_PATH) as conn:
-        await conn.execute(
-            "DELETE FROM browse_views WHERE viewer_telegram_id=?",
-            (callback.from_user.id,),
-        )
-        await conn.commit()
+    """Скидає тільки скіпнутих — лайкнуті залишаються прихованими"""
+    await clear_skipped(callback.from_user.id)
     await callback.message.answer("🔄 Список оновлено — показую всіх знову!")
-    await show_browse(callback.message, callback.from_user.id, 0)
+    await show_browse(callback.message, callback.from_user.id, 0, skip_viewed=False)
     await callback.answer()
 
 
@@ -459,7 +465,7 @@ async def browse_skip(callback: CallbackQuery):
     cards_before = await get_browse_cards(callback.from_user.id)
     if idx < len(cards_before):
         skipped_tg = cards_before[idx]["telegram_id"]
-        await mark_viewed(callback.from_user.id, skipped_tg)
+        await mark_skipped(callback.from_user.id, skipped_tg)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
     cards = await get_browse_cards(callback.from_user.id)
