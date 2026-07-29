@@ -1194,3 +1194,14 @@ async def quick_extra_skip(callback: CallbackQuery, state: FSMContext, bot):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
     await _save_profile(callback.message, state, bot)
+
+
+# ── Кнопка "Переглянути профілі" з нагадування ───────────────────────────────
+
+@router.callback_query(F.data == "show_pending")
+async def cb_show_pending(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Недостатньо прав", show_alert=True)
+        return
+    await callback.answer()
+    await _show_pending(callback.message)
