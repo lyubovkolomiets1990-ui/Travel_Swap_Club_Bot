@@ -90,11 +90,6 @@ async def init_db():
             await db.execute("ALTER TABLE matches ADD COLUMN reminder_sent INTEGER DEFAULT 0")
         except Exception:
             pass
-        await db.execute(
-            """UPDATE users SET verification_status='verified'
-               WHERE home_city IS NOT NULL AND home_city != ''
-               AND (verification_status IS NULL OR verification_status='new')"""
-        )
         await db.commit()
     print("✅ База даних ініціалізована")
 
@@ -254,7 +249,8 @@ async def get_active_trips():
                       u.home_description, u.home_photos, u.has_pets, u.pets_info,
                       u.extra_info, u.verification_status
                FROM trips t JOIN users u ON t.user_id = u.id
-               WHERE t.status = 'active'"""
+               WHERE t.status = 'active'
+               AND u.verification_status = 'verified'"""
         ) as cursor:
             return await cursor.fetchall()
 
