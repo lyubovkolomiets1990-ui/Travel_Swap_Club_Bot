@@ -593,10 +593,15 @@ async def get_liked_telegram_ids(from_telegram_id: int) -> set:
 
 
 async def clear_skipped(viewer_tg_id: int):
-    """Скидає тільки скіпнутих — лайки залишаються"""
+    """Скидає скіпнутих І стару browse_views — лайки залишаються"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "DELETE FROM skipped_users WHERE viewer_telegram_id=?",
+            (viewer_tg_id,),
+        )
+        # Очищаємо також стару таблицю browse_views
+        await db.execute(
+            "DELETE FROM browse_views WHERE viewer_telegram_id=?",
             (viewer_tg_id,),
         )
         await db.commit()
