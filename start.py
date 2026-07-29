@@ -858,12 +858,30 @@ async def verify_approve(callback: CallbackQuery, bot):
     await callback.answer("✅ Верифіковано!")
 
     try:
+        from db import get_user_trips
+        existing_trips = await get_user_trips(target_id)
+        if existing_trips:
+            msg = (
+                "🎉 *Ваш профіль верифіковано!*\n\n"
+                "Тепер його видно іншим мандрівникам у пошуку. "
+                "Шукаємо для вас матчі — як тільки хтось підійде, одразу повідомимо! 🔔"
+            )
+        else:
+            msg = (
+                "🎉 *Ваш профіль верифіковано!*\n\n"
+                "Тепер його видно іншим мандрівникам у пошуку. "
+                "Додайте поїздку, щоб почати шукати матчі! ✈️"
+            )
+        kb_verified = InlineKeyboardBuilder()
+        if existing_trips:
+            kb_verified.button(text="🔍 Переглянути мандрівників", callback_data="browse_start")
+        else:
+            kb_verified.button(text="✈️ Додати поїздку", callback_data="add_trip")
+        kb_verified.adjust(1)
         await bot.send_message(
-            target_id,
-            "🎉 *Ваш профіль верифіковано!*\n\n"
-            "Тепер його видно іншим мандрівникам у пошуку. "
-            "Додайте поїздку, щоб почати шукати матчі! ✈️",
+            target_id, msg,
             parse_mode="Markdown",
+            reply_markup=kb_verified.as_markup(),
         )
     except Exception:
         pass
