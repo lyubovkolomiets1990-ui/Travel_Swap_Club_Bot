@@ -973,6 +973,7 @@ async def cmd_pending_channel(message: Message):
 # ── Спільна логіка /pending ───────────────────────────────────────────────────
 
 async def _show_pending(message: Message):
+    """Викликається з команди /pending — відповідає в той самий чат"""
     from db import get_pending_verifications
     pending = await get_pending_verifications()
 
@@ -992,10 +993,16 @@ async def _show_pending(message: Message):
         kb.button(text="🚫 Заблокувати назавжди", callback_data="verify_ban_" + str(user["telegram_id"]))
         kb.adjust(2, 1)
 
+        city    = user['home_city']        or '—'
+        country = user['home_country']     or '—'
+        desc    = user['home_description'] or '—'
+        status_line = "" if (user['home_city']) else "⚠️ Профіль не заповнений\n"
+
         caption = (
-            f"👤 {user['name']}\n"
-            f"🏠 {user['home_city']}, {user['home_country']}\n"
-            f"📝 {user['home_description']}\n"
+            f"{status_line}"
+            f"👤 {user['name'] or '—'}\n"
+            f"🏠 {city}, {country}\n"
+            f"📝 {desc}\n"
             f"{pets_line}"
             f"🆔 {user['telegram_id']}"
         )
@@ -1009,6 +1016,52 @@ async def _show_pending(message: Message):
                 await message.answer(caption, reply_markup=kb.as_markup())
         except Exception:
             await message.answer(caption, reply_markup=kb.as_markup())
+
+
+async def _show_pending_to(bot, chat_id: int):
+    """Викликається з кнопки — надсилає в приват адміну"""
+    from db import get_pending_verifications
+    pending = await get_pending_verifications()
+
+    if not pending:
+        await bot.send_message(chat_id, "✅ Немає профілів що очікують верифікації.")
+        return
+
+    await bot.send_message(chat_id, f"⏳ Очікують верифікації: {len(pending)}")
+
+    for user in pending:
+        pets_line = f"🐾 Тварини: {user['pets_info']}\n" if user["has_pets"] else ""
+        photos = (user["home_photos"] or "").split(",") if user["home_photos"] else []
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Верифікувати", callback_data="verify_approve_" + str(user["telegram_id"]))
+        kb.button(text="❌ Відхилити", callback_data="verify_reject_" + str(user["telegram_id"]))
+        kb.button(text="🚫 Заблокувати назавжди", callback_data="verify_ban_" + str(user["telegram_id"]))
+        kb.adjust(2, 1)
+
+        city    = user['home_city']        or '—'
+        country = user['home_country']     or '—'
+        desc    = user['home_description'] or '—'
+        status_line = "" if (user['home_city']) else "⚠️ Профіль не заповнений\n"
+
+        caption = (
+            f"{status_line}"
+            f"👤 {user['name'] or '—'}\n"
+            f"🏠 {city}, {country}\n"
+            f"📝 {desc}\n"
+            f"{pets_line}"
+            f"🆔 {user['telegram_id']}"
+        )
+
+        try:
+            if photos and photos[0]:
+                await bot.send_photo(
+                    chat_id, photo=photos[0], caption=caption, reply_markup=kb.as_markup()
+                )
+            else:
+                await bot.send_message(chat_id, caption, reply_markup=kb.as_markup())
+        except Exception:
+            await bot.send_message(chat_id, caption, reply_markup=kb.as_markup())
 
 
 # ── Редагування профілю ───────────────────────────────────────────────────────
@@ -1199,9 +1252,9 @@ async def quick_extra_skip(callback: CallbackQuery, state: FSMContext, bot):
 # ── Кнопка "Переглянути профілі" з нагадування ───────────────────────────────
 
 @router.callback_query(F.data == "show_pending")
-async def cb_show_pending(callback: CallbackQuery):
+async def cb_show_pending(callback: CallbackQuery, bot):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Недостатньо прав", show_alert=True)
         return
-    await callback.answer()
-    await _show_pending(callback.message)
+    await callback.answer("⏳ Завантажую...")
+    await _show_pending_to(bot, callback.from_user.id)
