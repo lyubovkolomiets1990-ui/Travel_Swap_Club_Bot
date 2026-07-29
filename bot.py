@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import sys
-
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
@@ -17,18 +16,18 @@ logger = logging.getLogger(__name__)
 
 async def set_commands(bot: Bot):
     await bot.set_my_commands([
-        BotCommand(command="start",  description="🏠 Головне меню"),
-        BotCommand(command="trip",   description="✈️ Додати поїздку"),
-        BotCommand(command="browse",   description="🔍 Переглянути мандрівників"),
-        BotCommand(command="saved",  description="❤️ Збережені хости"),
-        BotCommand(command="rating", description="📊 Мій рейтинг"),
-        BotCommand(command="calendar", description="📅 Календар доступності"),
-        BotCommand(command="top",      description="⭐️ Топ за рейтингом"),
-        BotCommand(command="find_home", description="🏠 Куди я хочу поїхати"),
-        BotCommand(command="find_to_me", description="📥 Хто їде до мене"),
-        BotCommand(command="edit_profile", description="✏️ Змінити профіль"),
+        BotCommand(command="start",          description="🏠 Головне меню"),
+        BotCommand(command="trip",           description="✈️ Додати поїздку"),
+        BotCommand(command="browse",         description="🔍 Переглянути мандрівників"),
+        BotCommand(command="saved",          description="❤️ Збережені хости"),
+        BotCommand(command="rating",         description="📊 Мій рейтинг"),
+        BotCommand(command="calendar",       description="📅 Календар доступності"),
+        BotCommand(command="top",            description="⭐️ Топ за рейтингом"),
+        BotCommand(command="find_home",      description="🏠 Куди я хочу поїхати"),
+        BotCommand(command="find_to_me",     description="📥 Хто їде до мене"),
+        BotCommand(command="edit_profile",   description="✏️ Змінити профіль"),
         BotCommand(command="delete_profile", description="🗑 Видалити профіль"),
-        BotCommand(command="help",   description="❓ Допомога"),
+        BotCommand(command="help",           description="❓ Допомога"),
     ])
 
 
@@ -51,6 +50,7 @@ async def main():
     from reminders import run_reminders
 
     logger.info("🚀 Запуск Travel Swap Club Bot...")
+
     await db.init_db()
 
     bot = Bot(token=token)
@@ -70,14 +70,16 @@ async def main():
     await init_calendar_table()
     await init_views_table()
     await init_bans_table()
+
     asyncio.create_task(run_reminders(bot))
     await set_commands(bot)
+
     me = await bot.get_me()
     logger.info(f"✅ Бот запущено: @{me.username}")
 
     await dp.start_polling(
         bot,
-        allowed_updates=dp.resolve_used_update_types(),
+        allowed_updates=["message", "callback_query", "channel_post"],
         drop_pending_updates=True,
     )
 
