@@ -1257,4 +1257,4 @@ async def cb_show_pending(callback: CallbackQuery, bot):
         await callback.answer("Недостатньо прав", show_alert=True)
         return
     await callback.answer("⏳ Завантажую...")
-    await _show_pending_to(bot, callback.from_user.id)
+    await _show_pending_to(bot, callback.message.chat.id)
