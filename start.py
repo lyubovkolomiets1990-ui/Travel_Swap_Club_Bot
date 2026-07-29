@@ -108,7 +108,7 @@ async def cmd_start(message: Message, state: FSMContext):
             "При додаванні поїздки можна обрати кілька варіантів того, кого "
             "ви готові прийняти (наприклад, і сім'ю, і пару, і соло-мандрівника)\n\n"
             "Якщо щось працює не так, як очікували, або знайшли помилку — "
-            "напишіть нам, будь ласка, на @your\\_support 🙏 "
+            "напишіть нам, будь ласка, на @TravelSwapSupport 🙏 "
             "Ми зробимо все можливе щоб виправити якнайшвидше.",
             parse_mode="Markdown",
         )
@@ -155,7 +155,7 @@ async def cmd_start(message: Message, state: FSMContext):
             "Travel Swap Club — це не просто обмін квартирами. Це спільнота людей, "
             "які відкривають світ, допомагають одне одному та подорожують як місцеві.\n\n"
             "Якщо у вас виникли питання або ви знайшли помилку — напишіть нам "
-            "на @your\\_support 🙏\n\n"
+            "на @TravelSwapSupport 🙏\n\n"
             "Бажаємо вам приємних подорожей та вдалих матчів! ✈️🏡",
             parse_mode="Markdown",
             reply_markup=kb_welcome.as_markup(),
@@ -639,7 +639,7 @@ async def cmd_help(message: Message):
         "6️⃣ Після обміну залиште відгук ⭐️\n\n"
         "✏️ /edit\\_profile — змінити опис, фото чи місто\n"
         "🗑 /delete\\_profile — видалити профіль повністю\n\n"
-        "❓ Питання? Пишіть @your\\_support",
+        "❓ Питання? Пишіть @TravelSwapSupport",
         parse_mode="Markdown",
     )
 
@@ -744,7 +744,7 @@ async def admin_confirm_delete(callback: CallbackQuery, bot):
         await bot.send_message(
             target_id,
             "ℹ️ Ваш профіль у Travel Swap Club було видалено адміністратором.\n\n"
-            "Якщо вважаєте це помилкою — зв'яжіться з підтримкою @your\\_support.",
+            "Якщо вважаєте це помилкою — зв'яжіться з підтримкою @TravelSwapSupport.",
             parse_mode="Markdown",
         )
     except Exception:
@@ -963,7 +963,7 @@ async def _send_rejection(bot, target_id: int, reason_text: str):
             target_id,
             f"😔 *Ваш профіль не пройшов верифікацію*\n\n"
             f"{reason_text}\n\n"
-            "Питання? Пишіть @your\\_support",
+            "Питання? Пишіть @TravelSwapSupport",
             parse_mode="Markdown",
         )
     except Exception:
