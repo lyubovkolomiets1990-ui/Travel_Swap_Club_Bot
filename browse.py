@@ -187,7 +187,8 @@ def _chat_url(user_id: int, username: str | None, name: str) -> tuple[str, str]:
 
 @router.message(Command("browse"))
 async def cmd_browse(message: Message):
-    await show_browse(message, message.from_user.id, 0)
+    await clear_skipped(message.from_user.id)
+    await show_browse(message, message.from_user.id, 0, skip_viewed=False)
 
 
 @router.message(Command("top"))
@@ -275,8 +276,9 @@ async def browse_top(callback: CallbackQuery):
 
 @router.callback_query(F.data == "browse_start")
 async def browse_start(callback: CallbackQuery):
+    await clear_skipped(callback.from_user.id)
     await callback.message.answer("Шукаю мандрівників...")
-    await show_browse(callback.message, callback.from_user.id, 0)
+    await show_browse(callback.message, callback.from_user.id, 0, skip_viewed=False)
     await callback.answer()
 
 
@@ -378,7 +380,6 @@ async def browse_like(callback: CallbackQuery, bot):
     me = await get_user(my_tg_id)
     them = await get_user(owner_tg)
     await add_like(my_tg_id, owner_tg)
-    await mark_viewed(my_tg_id, owner_tg)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Лайк!")
 
@@ -409,9 +410,8 @@ async def browse_like(callback: CallbackQuery, bot):
             pass
 
     cards = await get_browse_cards(my_tg_id)
-    next_idx = idx + 1
-    if next_idx < len(cards):
-        await send_card(callback.message, cards[next_idx], next_idx, len(cards))
+    if cards:
+        await send_card(callback.message, cards[0], 0, len(cards))
     else:
         kb_end = InlineKeyboardBuilder()
         kb_end.button(text="🔄 Почати спочатку", callback_data="browse_reset")
@@ -424,12 +424,10 @@ async def browse_like(callback: CallbackQuery, bot):
 
 @router.callback_query(F.data.startswith("bcont_"))
 async def browse_continue(callback: CallbackQuery):
-    idx = int(callback.data.split("_")[1])
     await callback.answer()
     cards = await get_browse_cards(callback.from_user.id)
-    next_idx = idx + 1
-    if next_idx < len(cards):
-        await send_card(callback.message, cards[next_idx], next_idx, len(cards))
+    if cards:
+        await send_card(callback.message, cards[0], 0, len(cards))
     else:
         kb = InlineKeyboardBuilder()
         kb.button(text="🔄 Почати спочатку", callback_data="browse_reset")
@@ -468,10 +466,10 @@ async def browse_skip(callback: CallbackQuery):
         await mark_skipped(callback.from_user.id, skipped_tg)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
+    # Беремо оновлений список після скіпу і показуємо перший
     cards = await get_browse_cards(callback.from_user.id)
-    next_idx = idx + 1
-    if next_idx < len(cards):
-        await send_card(callback.message, cards[next_idx], next_idx, len(cards))
+    if cards:
+        await send_card(callback.message, cards[0], 0, len(cards))
     else:
         kb = InlineKeyboardBuilder()
         kb.button(text="🔄 Почати спочатку", callback_data="browse_reset")
