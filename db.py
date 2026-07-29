@@ -525,10 +525,11 @@ async def get_all_users_with_home() -> list:
             return await cursor.fetchall()
 
 
-# ── Перегляди в browse ────────────────────────────────────────────────────────
+# ── Скіп в browse (окремо від лайків) ────────────────────────────────────────
 
 async def init_views_table():
     async with aiosqlite.connect(DB_PATH) as db:
+        # Стара таблиця — залишаємо для сумісності, але більше не використовуємо
         await db.execute("""
             CREATE TABLE IF NOT EXISTS browse_views (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -538,26 +539,72 @@ async def init_views_table():
                 UNIQUE(viewer_telegram_id, viewed_telegram_id)
             )
         """)
+        # Нова таблиця — тільки скіпнуті
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS skipped_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                viewer_telegram_id INTEGER NOT NULL,
+                skipped_telegram_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(viewer_telegram_id, skipped_telegram_id)
+            )
+        """)
         await db.commit()
 
 
-async def mark_viewed(viewer_tg_id: int, viewed_tg_id: int):
+async def mark_skipped(viewer_tg_id: int, skipped_tg_id: int):
+    """Позначає юзера як скіпнутого (кнопка 👎 Далі)"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO browse_views (viewer_telegram_id, viewed_telegram_id) VALUES (?, ?)",
-            (viewer_tg_id, viewed_tg_id),
+            "INSERT OR IGNORE INTO skipped_users (viewer_telegram_id, skipped_telegram_id) VALUES (?, ?)",
+            (viewer_tg_id, skipped_tg_id),
         )
         await db.commit()
 
 
-async def get_viewed_ids(viewer_tg_id: int) -> set:
+# Залишаємо для зворотньої сумісності — більше не використовується
+async def mark_viewed(viewer_tg_id: int, viewed_tg_id: int):
+    await mark_skipped(viewer_tg_id, viewed_tg_id)
+
+
+async def get_skipped_ids(viewer_tg_id: int) -> set:
+    """Повертає тільки скіпнутих — лайкнуті фільтруються окремо через likes"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT viewed_telegram_id FROM browse_views WHERE viewer_telegram_id=?",
+            "SELECT skipped_telegram_id FROM skipped_users WHERE viewer_telegram_id=?",
             (viewer_tg_id,),
         ) as cursor:
             rows = await cursor.fetchall()
             return {r[0] for r in rows}
+
+
+async def get_liked_telegram_ids(from_telegram_id: int) -> set:
+    """Повертає telegram_id тих кого лайкнули"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT u.telegram_id FROM users u
+               JOIN likes l ON l.to_user_id = u.id
+               JOIN users u2 ON l.from_user_id = u2.id
+               WHERE u2.telegram_id = ?""",
+            (from_telegram_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {r[0] for r in rows}
+
+
+async def clear_skipped(viewer_tg_id: int):
+    """Скидає тільки скіпнутих — лайки залишаються"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM skipped_users WHERE viewer_telegram_id=?",
+            (viewer_tg_id,),
+        )
+        await db.commit()
+
+
+# Залишаємо для зворотньої сумісності
+async def get_viewed_ids(viewer_tg_id: int) -> set:
+    return await get_skipped_ids(viewer_tg_id)
 
 
 async def delete_user_profile(telegram_id: int):
