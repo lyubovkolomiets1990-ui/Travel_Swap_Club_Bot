@@ -290,8 +290,8 @@ async def browse_reset(callback: CallbackQuery):
 
 
 async def show_browse(message: Message, my_tg_id: int, idx: int, sort_by_rating: bool = False,
-                       filter_city: str = None, filter_home_city: str = None):
-    cards = await get_browse_cards(my_tg_id, sort_by_rating=sort_by_rating,
+                       filter_city: str = None, filter_home_city: str = None, skip_viewed: bool = True):
+    cards = await get_browse_cards(my_tg_id, skip_viewed=skip_viewed, sort_by_rating=sort_by_rating,
                                     filter_city=filter_city, filter_home_city=filter_home_city)
     if not cards:
         kb = InlineKeyboardBuilder()
