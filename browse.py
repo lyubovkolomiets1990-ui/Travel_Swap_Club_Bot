@@ -284,10 +284,8 @@ async def browse_start(callback: CallbackQuery):
 
 @router.callback_query(F.data == "browse_reset")
 async def browse_reset(callback: CallbackQuery):
-    """Скидає тільки скіпнутих — лайкнуті залишаються прихованими"""
-    await clear_skipped(callback.from_user.id)
-    await callback.message.answer("🔄 Список оновлено — показую всіх знову!")
-    await show_browse(callback.message, callback.from_user.id, 0, skip_viewed=False)
+    await callback.answer()
+    await show_browse(callback.message, callback.from_user.id, 0)
     await callback.answer()
 
 
