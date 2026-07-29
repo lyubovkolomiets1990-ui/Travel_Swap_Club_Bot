@@ -47,6 +47,7 @@ async def main():
     import reviews as reviews_handler
     import browse as browse_handler
     import calendar_avail as calendar_handler
+    import support as support_handler
     from reminders import run_reminders
 
     logger.info("🚀 Запуск Travel Swap Club Bot...")
@@ -65,6 +66,7 @@ async def main():
     dp.include_router(reviews_handler.router)
     dp.include_router(browse_handler.router)
     dp.include_router(calendar_handler.router)
+    dp.include_router(support_handler.router)
 
     from db import init_calendar_table, init_views_table, init_bans_table
     await init_calendar_table()
