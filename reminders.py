@@ -36,8 +36,7 @@ async def check_all(bot: Bot):
 
 
 async def remind_pending_verifications(bot: Bot):
-    """Нагадує адміну/в канал верифікації, якщо є профілі що чекають довше доби —
-    щоб жодного нового користувача не загубити через забудькуватість."""
+    """Нагадує адміну/в канал верифікації, якщо є профілі що чекають довше доби."""
     from config import ADMIN_IDS, VERIFICATION_CHANNEL_ID
 
     pending = await db.get_pending_verifications()
@@ -60,23 +59,26 @@ async def remind_pending_verifications(bot: Bot):
     targets = [VERIFICATION_CHANNEL_ID] if VERIFICATION_CHANNEL_ID else ADMIN_IDS
     names = ", ".join(u["name"] or str(u["telegram_id"]) for u in old_enough)
 
+    kb = InlineKeyboardBuilder()
+    kb.button(text="👁 Переглянути профілі", callback_data="show_pending")
+    kb.adjust(1)
+
     for target_id in targets:
         try:
             await bot.send_message(
                 target_id,
                 f"⏰ *Нагадування про верифікацію*\n\n"
                 f"{len(old_enough)} профіл(ів) чекають верифікації понад добу: "
-                f"{names}\n\n"
-                "Напишіть /pending щоб переглянути і вирішити.",
+                f"{names}",
                 parse_mode="Markdown",
+                reply_markup=kb.as_markup(),
             )
         except Exception:
             pass
 
 
 async def remind_trip_ending_tomorrow(bot: Bot):
-    """За 1 день до завершення поїздки — питаємо чи дати ще актуальні,
-    бо завтра поїздка автоматично стане неактивною і зникне з пошуку."""
+    """За 1 день до завершення поїздки — питаємо чи дати ще актуальні."""
     trips = await db.get_trips_ending_tomorrow()
     for trip in trips:
         kb = InlineKeyboardBuilder()
@@ -145,7 +147,6 @@ async def remind_pending_reviews(bot: Bot):
             days_after = (today - date_to).days
 
             if days_after == 3:
-                # Перевіряємо чи є матч і чи є відгук
                 my_trips = await db.get_user_trips(trip["telegram_id"])
                 for t in my_trips:
                     user = await db.get_user(trip["telegram_id"])
@@ -153,7 +154,6 @@ async def remind_pending_reviews(bot: Bot):
                         continue
                     review = await db.get_review(t["id"], user["id"])
                     if not review:
-                        from aiogram.utils.keyboard import InlineKeyboardBuilder
                         kb = InlineKeyboardBuilder()
                         kb.button(text="⭐️ Залишити відгук", callback_data=f"start_review_{t['id']}")
                         await bot.send_message(
@@ -171,15 +171,13 @@ async def remind_pending_reviews(bot: Bot):
 
 
 async def remind_inactive_matches(bot: Bot):
-    """Нагадати якщо матч більше 7 днів без відповіді — лише ОДИН раз на матч,
-    незалежно від того скільки разів бот перезапускався."""
+    """Нагадати якщо матч більше 7 днів без відповіді — лише ОДИН раз на матч."""
     matches = await db.get_pending_matches()
     today = datetime.now()
     fmt = "%Y-%m-%d %H:%M:%S"
 
     for match in matches:
         try:
-            # Якщо нагадування вже надсилалось для цього матчу — пропускаємо
             already_sent = match["reminder_sent"] if "reminder_sent" in match.keys() else 0
             if already_sent:
                 continue
@@ -188,14 +186,12 @@ async def remind_inactive_matches(bot: Bot):
             days_waiting = (today - created).days
 
             if days_waiting >= 7:
-                # Повідомляємо обох учасників
                 trips = await db.get_active_trips()
                 trip_map = {t["id"]: t for t in trips}
 
                 for trip_id in (match["trip_id_1"], match["trip_id_2"]):
                     trip = trip_map.get(trip_id)
                     if trip:
-                        from aiogram.utils.keyboard import InlineKeyboardBuilder
                         kb = InlineKeyboardBuilder()
                         kb.button(text="🔍 Переглянути матч", callback_data="browse_start")
                         try:
@@ -211,7 +207,6 @@ async def remind_inactive_matches(bot: Bot):
                         except Exception:
                             pass
 
-                # Позначаємо що нагадування вже надіслано — більше не повторюватиметься
                 await db.mark_reminder_sent(match["id"])
         except Exception:
             pass
