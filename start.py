@@ -685,8 +685,22 @@ async def cancel_delete_profile(callback: CallbackQuery):
 
 # ── Адмінська команда: видалення чужого профілю ───────────────────────────────
 
-@router.message(Command("whatchatid"))
-async def cmd_whatchatid(message: Message):
+@router.message(Command("verify_all"))
+async def cmd_verify_all(message: Message):
+    """Одноразова команда — верифікує всіх існуючих юзерів з заповненим профілем"""
+    if not is_admin_message(message):
+        return
+    import aiosqlite
+    from config import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            """UPDATE users SET verification_status='verified'
+               WHERE home_city IS NOT NULL AND home_city != ''
+               AND verification_status != 'verified'"""
+        )
+        await db.commit()
+        count = result.rowcount
+    await message.answer(f"✅ Верифіковано {count} існуючих профілів.")
     if not is_admin_message(message):
         return
     await message.answer(f"🆔 ID цього чату: `{message.chat.id}`", parse_mode="Markdown")
