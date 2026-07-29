@@ -394,10 +394,6 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
     extra_info = data.get("extra_info", "")
     editing_field = data.get("editing_field")
 
-    # Якщо людина змінює фото або опис ПІСЛЯ того як вже була верифікована —
-    # надсилаємо сповіщення в канал модерації про новий контент для перегляду.
-    # Профіль залишається видимим (не блокуємо людину), просто даємо вам
-    # можливість перевірити і заблокувати якщо щось не так.
     existing_user = await get_user(message.chat.id)
     was_already_verified = (
         editing_field in ("description", "photos")
@@ -441,7 +437,6 @@ async def _save_profile(message: Message, state: FSMContext, bot=None):
         reply_markup=kb.as_markup(),
     )
 
-    # Сповіщаємо канал модерації, якщо вже верифікований профіль змінив фото/опис
     import logging
     logging.getLogger("verification").info(
         f"📋 _save_profile: editing_field={editing_field}, "
@@ -560,7 +555,6 @@ async def _notify_admins_new_user(bot, telegram_id: int, trip: dict = None):
     for target_id in targets:
         try:
             if len(photos) > 1:
-                # Альбом — підпис іде під останнім фото, кнопки окремим повідомленням після
                 media = [InputMediaPhoto(media=p) for p in photos[:10]]
                 media[-1].caption = caption
                 media[-1].parse_mode = "Markdown"
@@ -700,7 +694,7 @@ async def cmd_whatchatid(message: Message):
 @router.message(Command("admin_delete"))
 async def cmd_admin_delete(message: Message):
     if not is_admin_message(message):
-        return  # ігноруємо мовчки, не показуємо що команда існує
+        return
 
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip().lstrip("-").isdigit():
@@ -958,11 +952,27 @@ async def _send_rejection(bot, target_id: int, reason_text: str):
         pass
 
 
+# ── /pending — приватний чат з ботом ─────────────────────────────────────────
+
 @router.message(Command("pending"))
 async def cmd_pending_verifications(message: Message):
     if not is_admin_message(message):
         return
+    await _show_pending(message)
 
+
+# ── /pending — з каналу верифікації ──────────────────────────────────────────
+
+@router.channel_post(Command("pending"))
+async def cmd_pending_channel(message: Message):
+    if not is_admin_message(message):
+        return
+    await _show_pending(message)
+
+
+# ── Спільна логіка /pending ───────────────────────────────────────────────────
+
+async def _show_pending(message: Message):
     from db import get_pending_verifications
     pending = await get_pending_verifications()
 
@@ -1000,6 +1010,8 @@ async def cmd_pending_verifications(message: Message):
         except Exception:
             await message.answer(caption, reply_markup=kb.as_markup())
 
+
+# ── Редагування профілю ───────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile(callback: CallbackQuery, state: FSMContext):
