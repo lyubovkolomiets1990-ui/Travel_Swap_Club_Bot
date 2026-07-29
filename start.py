@@ -78,6 +78,7 @@ def main_menu_kb():
     kb.button(text="❤️ Збережені",        callback_data="my_saved")
     kb.button(text="📊 Мій рейтинг",      callback_data="my_rating")
     kb.button(text="🏠 Змінити профіль",  callback_data="edit_profile")
+    kb.button(text="🆘 Підтримка",         callback_data="contact_support")
     kb.adjust(2)
     return kb.as_markup()
 
